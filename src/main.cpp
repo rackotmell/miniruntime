@@ -1,3 +1,4 @@
+#include <chrono>
 #include <iostream>
 #include <ostream>
 #include <sys/epoll.h>
@@ -6,39 +7,30 @@
 #include <unistd.h>
 
 #include "eventloop.h"
-#include "blockingqueue.h"
+#include "threadpool.h"
 
 int main() {
+
     miniruntime::EventLoop loop;
-
-    auto trigger = loop.createTrigger([]{
-        std::cout << "Triggered" << std::flush;
-    });
-
     std::thread eventLoopThreadloop([&loop] { loop.run(); });
 
-    trigger.trigger();
-    trigger.valid();
+    {
+        miniruntime::ThreadPool pool;
 
-    const auto fd = eventfd(0, EFD_NONBLOCK);
-    auto event = loop.createEvent(fd, EPOLLIN, miniruntime::EventType::TRIGGER,
-        [](int fd){
-            uint64_t val;
-            read(fd, &val, sizeof(val));
-            std::cout << "Evented" << std::flush;
-    });
+        auto trigger = loop.createTrigger([&pool]{
+            pool.enqueue([]{
+                std::cout << "Triggered1" << std::flush;
+            });
+            pool.enqueue([]{
+                std::cout << "Triggered2" << std::flush;
+            });
+        });
 
-    event.valid();
+        trigger.trigger();
 
-    uint64_t one = 1;
-    write(fd, &one, sizeof(one));
-
-    miniruntime::BlockingQueue<int> queue;
-
-    queue.emplace(1);
-    queue.emplace(4);
-
-    std::cout << queue.pop() << queue.pop() << std::flush;
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+    }
+    loop.stop();
 
     eventLoopThreadloop.join();
 }

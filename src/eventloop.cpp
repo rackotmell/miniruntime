@@ -20,8 +20,10 @@ namespace miniruntime {
     }
 
     EventLoop::~EventLoop() 
-    { 
-
+    {
+        for (auto& [fd, event] : m_events) {
+            epoll_ctl(m_epollFd, EPOLL_CTL_DEL, fd, nullptr);
+        }
     }
 
     EventHandle EventLoop::createEvent(int fd, uint32_t epollFlags, EventType type, EventCallback callback)
