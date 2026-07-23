@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include "eventloop.h"
+#include "blockingqueue.h"
 
 int main() {
     miniruntime::EventLoop loop;
@@ -31,6 +32,13 @@ int main() {
 
     uint64_t one = 1;
     write(fd, &one, sizeof(one));
+
+    miniruntime::BlockingQueue<int> queue;
+
+    queue.emplace(1);
+    queue.emplace(4);
+
+    std::cout << queue.pop() << queue.pop() << std::flush;
 
     eventLoopThreadloop.join();
 }
