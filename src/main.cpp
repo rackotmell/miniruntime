@@ -7,7 +7,7 @@
 #include <unistd.h>
 
 #include "eventloop.h"
-#include "threadpool.h"
+#include "dynamicthreadpool.h"
 
 int main() {
 
@@ -15,7 +15,7 @@ int main() {
     std::thread eventLoopThreadloop([&loop] { loop.run(); });
 
     {
-        miniruntime::ThreadPool pool;
+        miniruntime::DynamicThreadPool pool;
 
         auto trigger = loop.createTrigger([&pool]{
             pool.enqueue([]{
