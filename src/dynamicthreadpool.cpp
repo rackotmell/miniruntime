@@ -1,4 +1,5 @@
 #include "dynamicthreadpool.h"
+#include "logger.h"
 
 #include <algorithm>
 #include <chrono>
@@ -51,7 +52,9 @@ namespace miniruntime {
             if (task) { 
                 try {
                     (*task)();
-                } catch (...) { }
+                } catch (...) {
+                    LOG_WARNING("Task failed");
+                }
                 continue;
             }
 
