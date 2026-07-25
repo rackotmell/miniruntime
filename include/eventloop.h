@@ -14,78 +14,80 @@ namespace miniruntime {
     };
 
     class EventLoop;
-
     class HandleBase {
-        public:
-            HandleBase(const HandleBase&) = delete;
-            HandleBase& operator=(const HandleBase&) = delete;
-            HandleBase(HandleBase&& handle);
-            HandleBase& operator=(HandleBase&& handle);
+    public:
+        HandleBase(const HandleBase&) = delete;
+        HandleBase& operator=(const HandleBase&) = delete;
+        HandleBase(HandleBase&& handle);
+        HandleBase& operator=(HandleBase&& handle);
 
-            virtual ~HandleBase();
+        virtual ~HandleBase();
 
-            bool valid() const;
+        bool valid() const;
 
-        protected:
-            EventLoop* m_loop;
-            int m_fd;
+    protected:
+        EventLoop* m_loop;
+        int m_fd;
 
-            HandleBase(EventLoop* loop, int fd);
+        HandleBase(EventLoop* loop, int fd);
     };
+
 
     class EventHandle : public HandleBase {
         friend class EventLoop;
 
-        public:
-            using HandleBase::HandleBase;
+    public:
+        using HandleBase::HandleBase;
 
-        private:
-            EventHandle(EventLoop* loop, int fd);
+    private:
+        EventHandle(EventLoop* loop, int fd);
     };
+
 
     class TriggerHandle : public HandleBase {
         friend class EventLoop;
 
-        public:
-            using HandleBase::HandleBase;
-            void trigger() const;
+    public:
+        using HandleBase::HandleBase;
+        void trigger() const;
 
-        private:
-            TriggerHandle(EventLoop* loop, int fd);
+    private:
+        TriggerHandle(EventLoop* loop, int fd);
     };
 
+    
     class EventLoop {
         using EventCallback = std::function<void(int)>;
         using TriggerCallback = std::function<void()>;
 
-        public:
-            EventLoop();
-            ~EventLoop();
+    public:
+        EventLoop();
+        ~EventLoop();
 
-            [[nodiscard]] EventHandle createEvent(int fd, uint32_t epollFlags, EventType type, EventCallback callback);
-            [[nodiscard]] TriggerHandle createTrigger(TriggerCallback callback);
+        [[nodiscard]] EventHandle createEvent(int fd, uint32_t epollFlags, EventType type, EventCallback callback);
+        [[nodiscard]] TriggerHandle createTrigger(TriggerCallback callback);
 
-            void run();
-            void stop();
+        void run();
+        void stop();
 
-        private:
-            int m_epollFd;
-            std::atomic<bool> m_stop;
-            std::mutex m_registerMutex;
+    private:
+        int m_epollFd;
+        std::atomic<bool> m_stop;
+        std::mutex m_registerMutex;
 
-            struct Event {
-                int fd;
-                uint32_t epollFlags;
-                EventType type;
-                EventCallback callback;
-            };
-            std::unordered_map<int, Event> m_events;
+        struct Event {
+            int fd;
+            uint32_t epollFlags;
+            EventType type;
+            EventCallback callback;
+        };
+        std::unordered_map<int, Event> m_events;
 
-            friend class HandleBase;
-            friend class EventHandle;
-            friend class TriggerHandle;
-            void unregisterEvent(int fd);
-            void registerEvent(Event& event);
+        friend class HandleBase;
+        friend class EventHandle;
+        friend class TriggerHandle;
+        void unregisterEvent(int fd);
+        void registerEvent(Event& event);
     };
 
 }
