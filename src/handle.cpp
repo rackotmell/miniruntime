@@ -1,20 +1,22 @@
-#include "eventloop.h"
+#include "handle.h"
 
 #include <sys/types.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
 #include <utility>
 
+#include "eventloop.h"
+
 
 namespace miniruntime {
 
-    HandleBase::HandleBase(HandleBase&& handle)
+    HandleBase::HandleBase(HandleBase&& handle) noexcept
         : m_loop(std::exchange(handle.m_loop, nullptr))
         , m_fd(std::exchange(handle.m_fd, -1))
         , m_ownFd(std::exchange(handle.m_ownFd, false))
     {}
 
-    HandleBase& HandleBase::operator=(HandleBase&& handle)
+    HandleBase& HandleBase::operator=(HandleBase&& handle) noexcept
     {
         m_loop = std::exchange(handle.m_loop, nullptr);
         m_fd = std::exchange(handle.m_fd, -1);
