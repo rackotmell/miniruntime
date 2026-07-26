@@ -1,9 +1,11 @@
 #include "eventloop.h"
+#include "logger.h"
 
 #include <array>
 #include <cerrno>
 #include <iostream>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <sys/epoll.h>
@@ -17,6 +19,8 @@ namespace miniruntime {
         m_epollFd = epoll_create1(0);
         if (m_epollFd < 0)
             std::cout << "[Error] Can not create epoll";
+
+        m_closeTrigger = std::make_unique<TriggerHandle>(createTrigger([]{ LOG_INFO("Event Loop stop triggered"); }));
     }
 
     EventLoop::~EventLoop() 
@@ -85,11 +89,14 @@ namespace miniruntime {
     void EventLoop::stop() 
     {
         m_stop = true;
+        
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_closeTrigger->trigger();
     }
 
     void EventLoop::unregisterEvent(int fd)
     {
-        std::lock_guard<std::mutex> lock(m_registerMutex);
+        std::lock_guard<std::mutex> lock(m_mutex);
         epoll_ctl(m_epollFd, EPOLL_CTL_DEL, fd, nullptr);
     }
 
@@ -101,7 +108,7 @@ namespace miniruntime {
         ev.data.fd = event.fd;
         ev.events = event.epollFlags;
 
-        std::lock_guard<std::mutex> lock(m_registerMutex);
+        std::lock_guard<std::mutex> lock(m_mutex);
         epoll_ctl(m_epollFd, EPOLL_CTL_ADD, fd, &ev);
         m_events[fd] = std::move(event);
     }

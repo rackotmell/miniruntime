@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 
@@ -55,7 +56,7 @@ namespace miniruntime {
         TriggerHandle(EventLoop* loop, int fd);
     };
 
-    
+
     class EventLoop {
         using EventCallback = std::function<void(int)>;
         using TriggerCallback = std::function<void()>;
@@ -73,7 +74,8 @@ namespace miniruntime {
     private:
         int m_epollFd;
         std::atomic<bool> m_stop;
-        std::mutex m_registerMutex;
+        std::mutex m_mutex;
+        std::unique_ptr<TriggerHandle> m_closeTrigger;
 
         struct Event {
             int fd;
