@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cerrno>
+#include <ctime>
 #include <iostream>
 #include <cstdint>
 #include <memory>
@@ -10,6 +11,8 @@
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
+#include <sys/time.h>
+#include <sys/timerfd.h>
 #include <unistd.h>
 
 namespace miniruntime {
@@ -20,7 +23,9 @@ namespace miniruntime {
         if (m_epollFd < 0)
             std::cout << "[Error] Can not create epoll";
 
-        m_closeTrigger = std::make_unique<TriggerHandle>(createTrigger([]{ LOG_INFO("Event Loop stop triggered"); }));
+        m_closeTrigger = std::make_unique<TriggerHandle>(
+            createTrigger([] { LOG_INFO("Event Loop stop triggered"); })
+        );
     }
 
     EventLoop::~EventLoop() 
@@ -32,12 +37,7 @@ namespace miniruntime {
 
     EventHandle EventLoop::createEvent(int fd, uint32_t epollFlags, EventType type, EventCallback callback)
     {
-        Event event;
-        event.fd = fd;
-        event.epollFlags = epollFlags;
-        event.type = type;
-        event.callback = callback;
-
+        Event event = prepareEvent(fd, epollFlags, type, std::move(callback));
         registerEvent(event);
 
         return EventHandle{this, fd};
@@ -49,19 +49,63 @@ namespace miniruntime {
         if (fd < 0)
             throw std::runtime_error("eventfd error");
 
-        Event event;
-        event.fd = fd;
-        event.epollFlags = EPOLLIN;
-        event.type = EventType::TRIGGER;
-        event.callback = [cb = std::move(callback)](int fd){
-            uint64_t val;
-            read(fd, &val, sizeof(val));
-            if (cb) cb();
-        };
-
+        Event event = prepareEvent(fd, EPOLLIN, EventType::TRIGGER,
+            [cb = std::move(callback)](int fd) {
+                uint64_t val;
+                read(fd, &val, sizeof(val));
+                if (cb) cb();
+        });
         registerEvent(event);
 
         return TriggerHandle{this, fd};
+    }
+
+    TimerHandle EventLoop::createTimer(std::chrono::milliseconds timeout, TimerCallback callback)
+    {
+        const int fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+        if (fd < 0)
+            throw std::runtime_error("timerfd error");
+
+        struct itimerspec spec{};
+        spec.it_value.tv_sec = timeout.count() / MILLI_DIVIDER;
+        spec.it_value.tv_nsec = (timeout.count() % MILLI_DIVIDER) / NANO_DIVIDER;
+
+        timerfd_settime(fd, 0, &spec, nullptr);
+
+        Event event = prepareEvent(fd, EPOLLIN, EventType::TIMER,
+            [cb = std::move(callback)](int fd) {
+                uint64_t val;
+                read(fd, &val, sizeof(val));
+                if (cb) cb();
+        });
+        registerEvent(event);
+
+        return TimerHandle(this, fd);
+    }
+
+    TimerHandle EventLoop::createInterval(std::chrono::milliseconds interval, TimerCallback callback)
+    {
+        const int fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+        if (fd < 0)
+            throw std::runtime_error("timerfd error");
+
+        struct itimerspec spec{};
+        spec.it_value.tv_sec = interval.count() / MILLI_DIVIDER;
+        spec.it_value.tv_nsec = (interval.count() % MILLI_DIVIDER) / NANO_DIVIDER;
+        spec.it_interval.tv_sec = interval.count() / MILLI_DIVIDER;
+        spec.it_interval.tv_nsec = (interval.count() % MILLI_DIVIDER) / NANO_DIVIDER;
+
+        timerfd_settime(fd, 0, &spec, nullptr);
+
+        Event event = prepareEvent(fd, EPOLLIN, EventType::TIMER,
+            [cb = std::move(callback)](int fd) {
+                uint64_t val;
+                read(fd, &val, sizeof(val));
+                if (cb) cb();
+        });
+        registerEvent(event);
+
+        return TimerHandle(this, fd);
     }
 
     void EventLoop::run()
@@ -111,6 +155,20 @@ namespace miniruntime {
         std::lock_guard<std::mutex> lock(m_mutex);
         epoll_ctl(m_epollFd, EPOLL_CTL_ADD, fd, &ev);
         m_events[fd] = std::move(event);
+    }
+
+    EventLoop::Event EventLoop::prepareEvent(
+        int fd,
+        uint32_t epollFlags,
+        EventType type,
+        EventCallback callback
+    ) {
+        return {
+            .fd = fd,
+            .epollFlags = epollFlags,
+            .type = type,
+            .callback = std::move(callback)
+        };
     }
 
 }

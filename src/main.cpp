@@ -25,9 +25,21 @@ int main() {
             });
         });
 
+        auto timer = loop.createTimer(std::chrono::seconds(3), [] {
+            LOG_INFO("{}", "Timer timeout");
+        });
+
+        auto interval = loop.createInterval(std::chrono::seconds(2), [] {
+            LOG_INFO("{}", "Interval timeout");
+        });
+
         trigger.trigger();
 
         std::this_thread::sleep_for(std::chrono::seconds(5));
+
+        timer.resetInterval(std::chrono::seconds(1));
+
+        std::this_thread::sleep_for(std::chrono::seconds(10));
     }
     loop.stop();
 
