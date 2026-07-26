@@ -38,6 +38,7 @@ namespace miniruntime {
 
         void worker(std::stop_token stopToken);
         void createNThreads(int n);
+        void clearZombies();
     };
 
 }
