@@ -38,24 +38,8 @@ namespace miniruntime {
 
     void DynamicThreadPool::enqueue(Task task)
     {
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-
-            const auto threadCount = m_threads.size();
-            const auto taskCount = m_taskQueue.size();
-
-            LOG_DEBUG("DynamicThreadPool::enqueue called, current threads={}, queue size={}",
-                threadCount, taskCount);
-
-            if (taskCount > 2 * threadCount && threadCount < m_maxPoolSize) {
-                LOG_INFO("scaling up: new threads count={} (previous={})", 
-                    threadCount, threadCount);
-
-                createNThreads(m_maxPoolSize - threadCount);
-            }
-        }
-
-        m_taskQueue.push(task);
+        adjustSize();
+        m_taskQueue.push(std::move(task));
     }
 
     void DynamicThreadPool::worker(std::stop_token stopToken)
@@ -102,6 +86,21 @@ namespace miniruntime {
             m_threads.emplace_back([this](std::stop_token st){
                 worker(std::move(st));
             });
+        }
+    }
+
+    void DynamicThreadPool::adjustSize()
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
+        const auto threadCount = m_threads.size();
+        const auto taskCount = m_taskQueue.size();
+
+        if (taskCount > 2 * threadCount && threadCount < m_maxPoolSize) {
+            LOG_INFO("DynamicThreadPool scaling up: new threads count={} (previous={})", 
+                threadCount, threadCount);
+
+            createNThreads(m_maxPoolSize - threadCount);
         }
     }
 

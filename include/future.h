@@ -5,6 +5,7 @@
 #include <exception>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <variant>
 
 namespace miniruntime {
@@ -17,12 +18,24 @@ namespace miniruntime {
         std::atomic<bool> ready;
     };
 
+    template<>
+    struct SharedState<void> {
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::optional<std::exception_ptr> result;
+        std::atomic<bool> ready;
+    };
+
+
     template<typename T>
     class Promise;
 
     template<typename T>
     class Future {
     public:
+        Future(Future&&) = default;
+        Future& operator=(Future&&) = default; 
+
         T get() {
             std::unique_lock<std::mutex> lock(m_state->mutex);
             m_state->cv.wait(lock, [this]{
@@ -45,9 +58,35 @@ namespace miniruntime {
         explicit Future(std::shared_ptr<SharedState<T>> state)
             : m_state(state) {}
 
-
         std::shared_ptr<SharedState<T>> m_state;
     };
+
+    template<>
+    class Future<void> {
+    public:
+        void get() {
+            std::unique_lock<std::mutex> lock(m_state->mutex);
+            m_state->cv.wait(lock, [this]{
+                return m_state->ready.load();
+            });
+            
+            auto& result = m_state->result;
+            if (result)
+                std::rethrow_exception(*result);
+        }
+
+        bool isReady() {
+            return m_state->ready.load();
+        }
+
+    private:
+        friend class Promise<void>;
+        explicit Future(std::shared_ptr<SharedState<void>> state)
+            : m_state(state) {}
+
+        std::shared_ptr<SharedState<void>> m_state;
+    };
+
 
     template<typename T>
     class Promise {
@@ -74,6 +113,32 @@ namespace miniruntime {
 
     private:
         std::shared_ptr<SharedState<T>> m_state;
+    };
+
+    template<>
+    class Promise<void> {
+    public:
+        Promise() : m_state(std::make_shared<SharedState<void>>()) {}
+
+        void setValue() {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            m_state->ready.store(true);
+            m_state->cv.notify_all();
+        }
+
+        void setException(std::exception_ptr ptr) {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            m_state->result = std::move(ptr);
+            m_state->ready.store(true);
+            m_state->cv.notify_all();
+        }
+
+        Future<void> getFuture() {
+            return Future<void>(m_state);
+        }
+
+    private:
+        std::shared_ptr<SharedState<void>> m_state;
     };
 
 }

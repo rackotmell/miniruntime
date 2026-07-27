@@ -23,7 +23,8 @@ namespace miniruntime {
             size_t taskQueueSize = 1000
         );
         ~DynamicThreadPool();
-        void enqueue(Task task);
+
+        void enqueue(Task task); 
 
     private:
         std::vector<std::jthread> m_threads;
@@ -38,6 +39,7 @@ namespace miniruntime {
 
         void worker(std::stop_token stopToken);
         void createNThreads(int n);
+        void adjustSize();
 
     };
 
