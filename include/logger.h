@@ -10,6 +10,14 @@
 
 #include "boundedblockingqueue.h"
 
+template<>
+struct std::formatter<std::thread::id, char> : std::formatter<unsigned long long, char> {
+    auto format(std::thread::id id, format_context& ctx) const {
+        return std::formatter<unsigned long long, char>::format(
+            std::hash<std::thread::id>{}(id), ctx);
+    }
+};
+
 namespace miniruntime {
 
     enum class LogLevel {

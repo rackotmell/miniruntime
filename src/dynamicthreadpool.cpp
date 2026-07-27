@@ -21,12 +21,18 @@ namespace miniruntime {
       , m_minPoolSize(minPoolSize)
       , m_maxPoolSize(maxPoolSize)
     {
+        const auto idleMs = idleTimeout.count();
+        LOG_DEBUG("DynamicThreadPool created: min={}, max={}, idleTimeout={}ms, queueSize={}",
+              minPoolSize, maxPoolSize, idleMs, taskQueueSize);
+
+
         m_threads.reserve(m_maxPoolSize);
         createNThreads(m_minPoolSize);
     }
 
     DynamicThreadPool::~DynamicThreadPool()
     {
+        LOG_DEBUG("DynamicThreadPool destroyed");
         m_taskQueue.close();
     }
 
@@ -38,7 +44,13 @@ namespace miniruntime {
             const auto threadCount = m_threads.size();
             const auto taskCount = m_taskQueue.size();
 
+            LOG_DEBUG("DynamicThreadPool::enqueue called, current threads={}, queue size={}",
+                threadCount, taskCount);
+
             if (taskCount > 2 * threadCount && threadCount < m_maxPoolSize) {
+                LOG_INFO("scaling up: new threads count={} (previous={})", 
+                    threadCount, threadCount);
+
                 createNThreads(m_maxPoolSize - threadCount);
             }
         }
@@ -48,13 +60,16 @@ namespace miniruntime {
 
     void DynamicThreadPool::worker(std::stop_token stopToken)
     {
+        const auto threadId = std::this_thread::get_id();
+        LOG_DEBUG("DynamicThreadPool::worker started (id={})", threadId);
+
         while(!stopToken.stop_requested()) {
             auto task = m_taskQueue.timeoutPop(m_idleTimeout);
             if (task) { 
                 try {
                     (*task)();
                 } catch (...) {
-                    LOG_WARNING("Task failed");
+                    LOG_WARNING("Task failed in worker (id={})", threadId);
                 }
                 continue;
             }
@@ -74,8 +89,11 @@ namespace miniruntime {
             m_zombie = std::move(*it);
             m_threads.erase(it);
 
+            LOG_DEBUG("DynamicThreadPool::worker exiting due to idle timeout (id={})", threadId);
+
             return;
         }
+        LOG_DEBUG("DynamicThreadPool::worker stopped by stop_token (id={})", threadId);
     }
 
     void DynamicThreadPool::createNThreads(int n)

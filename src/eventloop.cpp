@@ -3,8 +3,8 @@
 
 #include <array>
 #include <cerrno>
+#include <cstring>
 #include <ctime>
-#include <iostream>
 #include <cstdint>
 #include <mutex>
 #include <stdexcept>
@@ -19,8 +19,10 @@ namespace miniruntime {
     EventLoop::EventLoop() : m_stop{false}
     {
         m_epollFd = epoll_create1(0);
-        if (m_epollFd < 0)
-            std::cout << "[Error] Can not create epoll";
+        if (m_epollFd < 0) {
+            LOG_ERROR("Can not create epoll");
+            throw std::runtime_error("Can not create epoll");
+        }
     }
 
     EventLoop::~EventLoop() 
@@ -32,6 +34,8 @@ namespace miniruntime {
 
     EventHandle EventLoop::createEvent(int fd, uint32_t epollFlags, EventType type, EventCallback callback)
     {
+        LOG_DEBUG("EventLoop::createEvent: fd={}, flags={:#x}", fd, epollFlags);
+
         Event event = prepareEvent(fd, epollFlags, type, std::move(callback));
         registerEvent(event);
 
@@ -41,6 +45,8 @@ namespace miniruntime {
     TriggerHandle EventLoop::createTrigger(TriggerCallback callback)
     {
         const int fd = eventfd(0, EFD_NONBLOCK);
+        LOG_DEBUG("EventLoop::createTrigger: fd={}", fd);
+
         if (fd < 0)
             throw std::runtime_error("eventfd error");
 
@@ -58,12 +64,15 @@ namespace miniruntime {
     TimerHandle EventLoop::createTimer(std::chrono::milliseconds timeout, TimerCallback callback)
     {
         const int fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+        const auto timeoutMs = timeout.count();
+        LOG_DEBUG("EventLoop::createTimer: fd={}, timeout={}ms", fd, timeoutMs);
+
         if (fd < 0)
             throw std::runtime_error("timerfd error");
 
         struct itimerspec spec{};
-        spec.it_value.tv_sec = timeout.count() / MILLI_DIVIDER;
-        spec.it_value.tv_nsec = (timeout.count() % MILLI_DIVIDER) / NANO_DIVIDER;
+        spec.it_value.tv_sec = timeoutMs / MILLI_DIVIDER;
+        spec.it_value.tv_nsec = (timeoutMs % MILLI_DIVIDER) / NANO_DIVIDER;
 
         timerfd_settime(fd, 0, &spec, nullptr);
 
@@ -81,14 +90,17 @@ namespace miniruntime {
     TimerHandle EventLoop::createInterval(std::chrono::milliseconds interval, TimerCallback callback)
     {
         const int fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+        const auto intervalMs = interval.count();
+        LOG_DEBUG("EventLoop::createInterval: fd={}, timeout={}ms", fd, intervalMs);
+
         if (fd < 0)
             throw std::runtime_error("timerfd error");
 
         struct itimerspec spec{};
-        spec.it_value.tv_sec = interval.count() / MILLI_DIVIDER;
-        spec.it_value.tv_nsec = (interval.count() % MILLI_DIVIDER) / NANO_DIVIDER;
-        spec.it_interval.tv_sec = interval.count() / MILLI_DIVIDER;
-        spec.it_interval.tv_nsec = (interval.count() % MILLI_DIVIDER) / NANO_DIVIDER;
+        spec.it_value.tv_sec = intervalMs / MILLI_DIVIDER;
+        spec.it_value.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
+        spec.it_interval.tv_sec = intervalMs / MILLI_DIVIDER;
+        spec.it_interval.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
 
         timerfd_settime(fd, 0, &spec, nullptr);
 
@@ -105,17 +117,25 @@ namespace miniruntime {
 
     void EventLoop::run()
     {
+        LOG_INFO("EventLoop started");
+
         constexpr int EPOLL_TIMEOUT = 100;
         std::array<epoll_event, 64> events;
 
         while (!m_stop) {
             int n = epoll_wait(m_epollFd, events.data(), events.size(), EPOLL_TIMEOUT);
             if (n < 0) {
+                const char* errorStr = strerror(errno);
+                LOG_ERROR("epoll_wait failed: {}", errorStr);
+
                 if (errno == EINTR) {
                     continue;
                 }
                 throw std::runtime_error("epoll wait error");
             } 
+
+            LOG_DEBUG("epoll_wait return {} events", n);
+
             for (int i = 0; i < n; ++i) {
                 const auto fd = events[i].data.fd;
                 const auto it = m_events.find(fd);
@@ -125,15 +145,20 @@ namespace miniruntime {
                 }
             }
         }
+
+        LOG_INFO("EventLoop stopped");
     }
 
     void EventLoop::stop() 
     {
+        LOG_DEBUG("EventLoop::stop called");
         m_stop = true;
     }
 
     void EventLoop::unregisterEvent(int fd)
     {
+        LOG_DEBUG("EventLoop::unregisterEvent: fd={}", fd);
+
         std::lock_guard<std::mutex> lock(m_mutex);
         epoll_ctl(m_epollFd, EPOLL_CTL_DEL, fd, nullptr);
     }

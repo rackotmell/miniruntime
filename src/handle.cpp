@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "eventloop.h"
+#include "logger.h"
 
 
 namespace miniruntime {
@@ -53,6 +54,8 @@ namespace miniruntime {
 
     void TriggerHandle::trigger() const
     {
+        LOG_DEBUG("TriggerHandle::trigger on fd={}", m_fd);
+
         uint64_t one = 1;
         write(m_fd, &one, sizeof(one));
     }
@@ -80,6 +83,8 @@ namespace miniruntime {
 
     void TimerHandle::cancel()
     {
+        LOG_DEBUG("TimerHandle::cancel on fd={}", m_fd);
+        
         if (!valid())
             return;
 
