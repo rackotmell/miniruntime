@@ -53,11 +53,23 @@ namespace miniruntime {
 
     public:
         using HandleBase::HandleBase;
-        void resetInterval(std::chrono::milliseconds interval);
         void cancel();
 
-    private:
+    protected:
         TimerHandle(EventLoop* loop, int fd);
+    };
+
+
+    class IntervalHandle : public TimerHandle {
+        friend class EventLoop;
+
+    public:
+        using TimerHandle::TimerHandle;
+        void resetInterval(std::chrono::milliseconds interval);
+    
+    private:
+        IntervalHandle(EventLoop* loop, int fd);
+
     };
 
 }

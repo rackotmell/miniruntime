@@ -37,7 +37,7 @@ int main() {
 
         std::this_thread::sleep_for(std::chrono::seconds(5));
 
-        timer.resetInterval(std::chrono::seconds(1));
+        interval.resetInterval(std::chrono::seconds(1));
 
         std::this_thread::sleep_for(std::chrono::seconds(10));
     }

@@ -65,14 +65,6 @@ namespace miniruntime {
         m_ownFd = true;
     }
 
-    void TimerHandle::resetInterval(std::chrono::milliseconds interval)
-    {
-        if (!valid())
-            return;
-
-        m_loop->resetTimerInterval(m_fd, interval);
-    }
-
     void TimerHandle::cancel()
     {
         LOG_DEBUG("TimerHandle::cancel on fd={}", m_fd);
@@ -83,5 +75,16 @@ namespace miniruntime {
         m_loop->unregisterEvent(m_fd);
         close(m_fd);
         m_fd = -1;
+    }
+
+    IntervalHandle::IntervalHandle(EventLoop* loop, int fd) : TimerHandle(loop, fd)
+    { }
+
+    void IntervalHandle::resetInterval(std::chrono::milliseconds interval)
+    {
+        if (!valid())
+            return;
+
+        m_loop->resetTimerInterval(m_fd, interval);
     }
 }

@@ -40,7 +40,7 @@ namespace miniruntime {
             std::chrono::milliseconds timeout, 
             TimerCallback callback
         );
-        [[nodiscard]] TimerHandle createInterval(
+        [[nodiscard]] IntervalHandle createInterval(
             std::chrono::milliseconds interval, 
             TimerCallback callback
         );
@@ -65,6 +65,7 @@ namespace miniruntime {
         friend class EventHandle;
         friend class TriggerHandle;
         friend class TimerHandle;
+        friend class IntervalHandle;
         void unregisterEvent(int fd);
         void registerEvent(Event& event);
         Event prepareEvent(

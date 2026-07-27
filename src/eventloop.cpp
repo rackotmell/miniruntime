@@ -92,7 +92,7 @@ namespace miniruntime {
         return TimerHandle(this, fd);
     }
 
-    TimerHandle EventLoop::createInterval(std::chrono::milliseconds interval, TimerCallback callback)
+    IntervalHandle EventLoop::createInterval(std::chrono::milliseconds interval, TimerCallback callback)
     {
         const int fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
         const auto intervalMs = interval.count();
@@ -118,7 +118,7 @@ namespace miniruntime {
         timerfd_settime(fd, 0, &spec, nullptr);
         registerEvent(event);
 
-        return TimerHandle(this, fd);
+        return IntervalHandle(this, fd);
     }
 
     void EventLoop::run()
