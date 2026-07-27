@@ -73,6 +73,7 @@ namespace miniruntime {
             EventType type,
             EventCallback callback
         );
+        void resetTimerInterval(int fd, std::chrono::milliseconds interval);
     };
 
 }

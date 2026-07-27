@@ -83,8 +83,7 @@ namespace miniruntime {
         
         void close() {
             const auto size = m_deque.size();
-            LOG_DEBUG("BoundedBlockingQueue closed ({} items remaining)", size);
-            
+
             m_closed = true;
             m_notEmptyCv.notify_all();
             m_notFullCv.notify_all();

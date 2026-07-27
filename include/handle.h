@@ -58,8 +58,6 @@ namespace miniruntime {
 
     private:
         TimerHandle(EventLoop* loop, int fd);
-
-        std::chrono::milliseconds m_interval;
     };
 
 }

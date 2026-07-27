@@ -37,6 +37,8 @@ namespace miniruntime {
         LOG_DEBUG("EventLoop::createEvent: fd={}, flags={:#x}", fd, epollFlags);
 
         Event event = prepareEvent(fd, epollFlags, type, std::move(callback));
+
+        std::lock_guard<std::mutex> lock(m_mutex);
         registerEvent(event);
 
         return EventHandle{this, fd};
@@ -56,6 +58,8 @@ namespace miniruntime {
                 read(fd, &val, sizeof(val));
                 if (cb) cb();
         });
+
+        std::lock_guard<std::mutex> lock(m_mutex);
         registerEvent(event);
 
         return TriggerHandle{this, fd};
@@ -74,14 +78,15 @@ namespace miniruntime {
         spec.it_value.tv_sec = timeoutMs / MILLI_DIVIDER;
         spec.it_value.tv_nsec = (timeoutMs % MILLI_DIVIDER) / NANO_DIVIDER;
 
-        timerfd_settime(fd, 0, &spec, nullptr);
-
         Event event = prepareEvent(fd, EPOLLIN, EventType::TIMER,
             [cb = std::move(callback)](int fd) {
                 uint64_t val;
                 read(fd, &val, sizeof(val));
                 if (cb) cb();
         });
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        timerfd_settime(fd, 0, &spec, nullptr);
         registerEvent(event);
 
         return TimerHandle(this, fd);
@@ -102,14 +107,15 @@ namespace miniruntime {
         spec.it_interval.tv_sec = intervalMs / MILLI_DIVIDER;
         spec.it_interval.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
 
-        timerfd_settime(fd, 0, &spec, nullptr);
-
         Event event = prepareEvent(fd, EPOLLIN, EventType::TIMER,
             [cb = std::move(callback)](int fd) {
                 uint64_t val;
                 read(fd, &val, sizeof(val));
                 if (cb) cb();
         });
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        timerfd_settime(fd, 0, &spec, nullptr);
         registerEvent(event);
 
         return TimerHandle(this, fd);
@@ -171,7 +177,6 @@ namespace miniruntime {
         ev.data.fd = event.fd;
         ev.events = event.epollFlags;
 
-        std::lock_guard<std::mutex> lock(m_mutex);
         epoll_ctl(m_epollFd, EPOLL_CTL_ADD, fd, &ev);
         m_events[fd] = std::move(event);
     }
@@ -188,6 +193,22 @@ namespace miniruntime {
             .type = type,
             .callback = std::move(callback)
         };
+    }
+
+    void EventLoop::resetTimerInterval(int fd, std::chrono::milliseconds interval)
+    {
+        const auto intervalMs = interval.count();
+        LOG_DEBUG("Reset timer interval: fd={}, interval={}ms", fd, intervalMs);
+
+        struct itimerspec spec{};
+
+        spec.it_value.tv_sec = intervalMs / MILLI_DIVIDER;
+        spec.it_value.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
+        spec.it_interval.tv_sec = intervalMs / MILLI_DIVIDER;
+        spec.it_interval.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        timerfd_settime(fd, 0, &spec, nullptr);
     }
 
 }

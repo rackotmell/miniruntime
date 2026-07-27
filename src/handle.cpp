@@ -70,15 +70,7 @@ namespace miniruntime {
         if (!valid())
             return;
 
-        m_interval = interval;
-        struct itimerspec spec{};
-
-        spec.it_value.tv_sec = interval.count() / MILLI_DIVIDER;
-        spec.it_value.tv_nsec = (interval.count() % MILLI_DIVIDER) / NANO_DIVIDER;
-        spec.it_interval.tv_sec = interval.count() / MILLI_DIVIDER;
-        spec.it_interval.tv_nsec = (interval.count() % MILLI_DIVIDER) / NANO_DIVIDER;
-
-        timerfd_settime(m_fd, 0, &spec, nullptr);
+        m_loop->resetTimerInterval(m_fd, interval);
     }
 
     void TimerHandle::cancel()
