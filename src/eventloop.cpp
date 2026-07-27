@@ -6,7 +6,6 @@
 #include <ctime>
 #include <iostream>
 #include <cstdint>
-#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <sys/epoll.h>
@@ -22,10 +21,6 @@ namespace miniruntime {
         m_epollFd = epoll_create1(0);
         if (m_epollFd < 0)
             std::cout << "[Error] Can not create epoll";
-
-        m_closeTrigger = std::make_unique<TriggerHandle>(
-            createTrigger([] { LOG_INFO("Event Loop stop triggered"); })
-        );
     }
 
     EventLoop::~EventLoop() 
@@ -110,21 +105,23 @@ namespace miniruntime {
 
     void EventLoop::run()
     {
+        constexpr int EPOLL_TIMEOUT = 100;
         std::array<epoll_event, 64> events;
 
         while (!m_stop) {
-            int n = epoll_wait(m_epollFd, events.data(), events.size(), -1);
+            int n = epoll_wait(m_epollFd, events.data(), events.size(), EPOLL_TIMEOUT);
             if (n < 0) {
                 if (errno == EINTR) {
                     continue;
                 }
                 throw std::runtime_error("epoll wait error");
             } 
-            for (const auto& epollEvent : events) {
-                const auto it = m_events.find(epollEvent.data.fd);
+            for (int i = 0; i < n; ++i) {
+                const auto fd = events[i].data.fd;
+                const auto it = m_events.find(fd);
                 if (it != m_events.end()) {
                     const auto& event = it->second;
-                    event.callback(epollEvent.data.fd);
+                    event.callback(fd);
                 }
             }
         }
@@ -133,9 +130,6 @@ namespace miniruntime {
     void EventLoop::stop() 
     {
         m_stop = true;
-        
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_closeTrigger->trigger();
     }
 
     void EventLoop::unregisterEvent(int fd)

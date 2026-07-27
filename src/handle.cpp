@@ -70,6 +70,8 @@ namespace miniruntime {
         m_interval = interval;
         struct itimerspec spec{};
 
+        spec.it_value.tv_sec = interval.count() / MILLI_DIVIDER;
+        spec.it_value.tv_nsec = (interval.count() % MILLI_DIVIDER) / NANO_DIVIDER;
         spec.it_interval.tv_sec = interval.count() / MILLI_DIVIDER;
         spec.it_interval.tv_nsec = (interval.count() % MILLI_DIVIDER) / NANO_DIVIDER;
 
@@ -82,5 +84,7 @@ namespace miniruntime {
             return;
 
         m_loop->unregisterEvent(m_fd);
+        close(m_fd);
+        m_fd = -1;
     }
 }

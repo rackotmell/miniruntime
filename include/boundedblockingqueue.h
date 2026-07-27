@@ -15,15 +15,18 @@ namespace miniruntime {
     public:
         BoundedBlockingQueue(size_t maxSize) : m_dequeMaxSize(maxSize) {}
 
-        void push(T value) {
+        bool push(T value) {
             {
                 std::unique_lock<std::mutex> lock(m_mutex);
                 m_notFullCv.wait(lock, [this]{
-                    return m_deque.size() < m_dequeMaxSize;
+                    return m_deque.size() < m_dequeMaxSize || m_closed;
                 });
+                if (m_closed)
+                    return false;
                 m_deque.push_back(value);
             }
             m_notEmptyCv.notify_one();
+            return true;
         }
 
         std::optional<T> pop() {
@@ -58,7 +61,7 @@ namespace miniruntime {
             T value = std::move(m_deque.front());
             m_deque.pop_front();
             
-            m_notFullCv.notify_one();;
+            m_notFullCv.notify_one();
 
             return value;
         }
@@ -68,11 +71,14 @@ namespace miniruntime {
             {
                 std::unique_lock<std::mutex> lock(m_mutex);
                 m_notFullCv.wait(lock, [this]{
-                    return m_deque.size() < m_dequeMaxSize;
+                    return m_deque.size() < m_dequeMaxSize || m_closed;
                 });
+                if (m_closed)
+                    return false;
                 m_deque.emplace_back(std::forward<Args>(args)...);
             }
             m_notEmptyCv.notify_one();
+            return true;
         }
         
         void close() {
@@ -81,14 +87,14 @@ namespace miniruntime {
             m_notFullCv.notify_all();
         }
 
-        size_t size()
+        size_t size() const
         {
             std::unique_lock<std::mutex> lock(m_mutex);
             return m_deque.size();
         } 
 
     private:
-        std::mutex m_mutex;
+        mutable std::mutex m_mutex;
         std::condition_variable m_notEmptyCv;
         std::condition_variable m_notFullCv;
 

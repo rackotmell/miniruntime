@@ -27,8 +27,8 @@ namespace miniruntime {
 
     private:
         std::vector<std::jthread> m_threads;
-        std::vector<std::jthread> m_zombies;
         BoundedBlockingQueue<Task> m_taskQueue;
+        std::jthread m_zombie;
 
         const std::chrono::milliseconds m_idleTimeout;
         const size_t m_minPoolSize;
@@ -38,7 +38,7 @@ namespace miniruntime {
 
         void worker(std::stop_token stopToken);
         void createNThreads(int n);
-        void clearZombies();
+
     };
 
 }

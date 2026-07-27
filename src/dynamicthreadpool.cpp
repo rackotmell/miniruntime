@@ -34,7 +34,6 @@ namespace miniruntime {
     {
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            clearZombies();
 
             const auto threadCount = m_threads.size();
             const auto taskCount = m_taskQueue.size();
@@ -72,7 +71,7 @@ namespace miniruntime {
             if (it == m_threads.end())
                 continue;
 
-            m_zombies.push_back(std::move(*it));
+            m_zombie = std::move(*it);
             m_threads.erase(it);
 
             return;
@@ -86,11 +85,6 @@ namespace miniruntime {
                 worker(std::move(st));
             });
         }
-    }
-
-    void DynamicThreadPool::clearZombies()
-    {
-        m_zombies.clear();
     }
 
 }

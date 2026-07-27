@@ -52,7 +52,6 @@ namespace miniruntime {
         int m_epollFd;
         std::atomic<bool> m_stop;
         std::mutex m_mutex;
-        std::unique_ptr<TriggerHandle> m_closeTrigger;
 
         struct Event {
             int fd;

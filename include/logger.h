@@ -62,7 +62,7 @@ namespace miniruntime {
         }
         void shutdown() {
             m_queue.close();
-            flush();
+            m_thread.join();
         }
 
     private:
@@ -76,12 +76,12 @@ namespace miniruntime {
         Logger() : m_minLevel(LogLevel::Debug)
             , m_output(&std::cout)
             , m_queue(1000)
-            , m_thread([this](std::stop_token st){
-                worker(std::move(st));
+            , m_thread([this](){
+                worker();
             })
         {}
 
-        void worker(std::stop_token st) {
+        void worker() {
             while (auto message = m_queue.pop()) {
                 writeMessage(message.value());
             }
@@ -114,7 +114,7 @@ namespace miniruntime {
         LogLevel m_minLevel;
         std::ostream* m_output;
         BoundedBlockingQueue<LogMessage> m_queue;
-        std::jthread m_thread;
+        std::thread m_thread;
     };
 
     #define LOG_DEBUG(format, ...) \
