@@ -11,7 +11,7 @@
 namespace miniruntime {
 
     template<typename T>
-    struct SharedState {
+    struct FutureState {
         std::mutex mutex;
         std::condition_variable cv;
         std::variant<std::monostate, T, std::exception_ptr> result;
@@ -19,7 +19,7 @@ namespace miniruntime {
     };
 
     template<>
-    struct SharedState<void> {
+    struct FutureState<void> {
         std::mutex mutex;
         std::condition_variable cv;
         std::optional<std::exception_ptr> result;
@@ -55,10 +55,10 @@ namespace miniruntime {
         
     private:
         friend class Promise<T>;
-        explicit Future(std::shared_ptr<SharedState<T>> state)
+        explicit Future(std::shared_ptr<FutureState<T>> state)
             : m_state(state) {}
 
-        std::shared_ptr<SharedState<T>> m_state;
+        std::shared_ptr<FutureState<T>> m_state;
     };
 
     template<>
@@ -81,17 +81,17 @@ namespace miniruntime {
 
     private:
         friend class Promise<void>;
-        explicit Future(std::shared_ptr<SharedState<void>> state)
+        explicit Future(std::shared_ptr<FutureState<void>> state)
             : m_state(state) {}
 
-        std::shared_ptr<SharedState<void>> m_state;
+        std::shared_ptr<FutureState<void>> m_state;
     };
 
 
     template<typename T>
     class Promise {
     public:
-        Promise() : m_state(std::make_shared<SharedState<T>>()) {}
+        Promise() : m_state(std::make_shared<FutureState<T>>()) {}
 
         void setValue(T value) {
             std::lock_guard<std::mutex> lock(m_state->mutex);
@@ -112,13 +112,13 @@ namespace miniruntime {
         }
 
     private:
-        std::shared_ptr<SharedState<T>> m_state;
+        std::shared_ptr<FutureState<T>> m_state;
     };
 
     template<>
     class Promise<void> {
     public:
-        Promise() : m_state(std::make_shared<SharedState<void>>()) {}
+        Promise() : m_state(std::make_shared<FutureState<void>>()) {}
 
         void setValue() {
             std::lock_guard<std::mutex> lock(m_state->mutex);
@@ -138,7 +138,7 @@ namespace miniruntime {
         }
 
     private:
-        std::shared_ptr<SharedState<void>> m_state;
+        std::shared_ptr<FutureState<void>> m_state;
     };
 
 }
