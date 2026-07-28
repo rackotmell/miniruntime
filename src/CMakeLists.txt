@@ -3,6 +3,7 @@ add_executable(${PROJECT_NAME}
     eventloop.cpp
     handle.cpp
     dynamicthreadpool.cpp
+    taskscheduler.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

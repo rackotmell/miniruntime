@@ -57,4 +57,8 @@ namespace miniruntime {
         bool m_closed;
     };
 
+
+    template<>
+    class SharedValue<void> : public SharedValue<bool> {};
+
 }

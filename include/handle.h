@@ -56,11 +56,9 @@ namespace miniruntime {
         using HandleBase::HandleBase;
         void cancel();
         bool fired();
-
-    protected:
-        TimerHandle(EventLoop* loop, int fd);
     
     private:
+        TimerHandle(EventLoop* loop, int fd);
         std::shared_ptr<std::atomic<bool>> m_fired;
     };
 

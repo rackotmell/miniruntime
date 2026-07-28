@@ -93,7 +93,7 @@ namespace miniruntime {
         timerfd_settime(fd, 0, &spec, nullptr);
         registerEvent(event);
 
-        return TimerHandle(this, fd);
+        return timer;
     }
 
     IntervalHandle EventLoop::createInterval(std::chrono::milliseconds interval, TimerCallback callback)
