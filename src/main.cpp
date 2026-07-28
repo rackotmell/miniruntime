@@ -7,6 +7,7 @@
 #include "eventloop.h"
 #include "dynamicthreadpool.h"
 #include "logger.h"
+#include "taskscheduler.h"
 
 int main() {
 

@@ -1,4 +1,5 @@
 #include "eventloop.h"
+#include "handle.h"
 #include "logger.h"
 
 #include <array>
@@ -78,11 +79,14 @@ namespace miniruntime {
         spec.it_value.tv_sec = timeoutMs / MILLI_DIVIDER;
         spec.it_value.tv_nsec = (timeoutMs % MILLI_DIVIDER) / NANO_DIVIDER;
 
+        TimerHandle timer{this, fd};
+
         Event event = prepareEvent(fd, EPOLLIN, EventType::TIMER,
-            [cb = std::move(callback)](int fd) {
+            [fired = timer.m_fired, cb = std::move(callback)](int fd) {
                 uint64_t val;
                 read(fd, &val, sizeof(val));
                 if (cb) cb();
+                fired->store(true);
         });
 
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -167,6 +171,7 @@ namespace miniruntime {
 
         std::lock_guard<std::mutex> lock(m_mutex);
         epoll_ctl(m_epollFd, EPOLL_CTL_DEL, fd, nullptr);
+        m_events.erase(fd);
     }
 
     void EventLoop::registerEvent(Event& event)

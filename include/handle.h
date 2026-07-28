@@ -1,6 +1,7 @@
 # pragma once
 
 #include <chrono>
+#include <memory>
 
 namespace miniruntime {
 
@@ -54,17 +55,22 @@ namespace miniruntime {
     public:
         using HandleBase::HandleBase;
         void cancel();
+        bool fired();
 
     protected:
         TimerHandle(EventLoop* loop, int fd);
+    
+    private:
+        std::shared_ptr<std::atomic<bool>> m_fired;
     };
 
 
-    class IntervalHandle : public TimerHandle {
+    class IntervalHandle : public HandleBase {
         friend class EventLoop;
 
     public:
-        using TimerHandle::TimerHandle;
+        using HandleBase::HandleBase;
+        void cancel();
         void resetInterval(std::chrono::milliseconds interval);
     
     private:

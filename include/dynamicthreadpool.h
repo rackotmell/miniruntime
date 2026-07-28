@@ -13,9 +13,9 @@
 namespace miniruntime {
 
     class DynamicThreadPool {
-    using Task = std::function<void()>;
-
     public:
+        using Task = std::function<void()>;
+
         explicit DynamicThreadPool(
             size_t minPoolSize = std::thread::hardware_concurrency(),
             size_t maxPoolSize = std::thread::hardware_concurrency() * 2,

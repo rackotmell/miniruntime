@@ -1,5 +1,7 @@
 #include "handle.h"
 
+#include <atomic>
+#include <memory>
 #include <sys/types.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
@@ -60,7 +62,9 @@ namespace miniruntime {
         write(m_fd, &one, sizeof(one));
     }
 
-    TimerHandle::TimerHandle(EventLoop* loop, int fd) : HandleBase(loop, fd)
+    TimerHandle::TimerHandle(EventLoop* loop, int fd)
+        : HandleBase(loop, fd)
+        , m_fired(std::make_shared<std::atomic<bool>>(false))
     {
         m_ownFd = true;
     }
@@ -77,8 +81,25 @@ namespace miniruntime {
         m_fd = -1;
     }
 
-    IntervalHandle::IntervalHandle(EventLoop* loop, int fd) : TimerHandle(loop, fd)
+    bool TimerHandle::fired()
+    {
+        return m_fired->load();
+    }
+
+    IntervalHandle::IntervalHandle(EventLoop* loop, int fd) : HandleBase(loop, fd)
     { }
+
+    void IntervalHandle::cancel()
+    {
+        LOG_DEBUG("IntervalHandle::cancel on fd={}", m_fd);
+        
+        if (!valid())
+            return;
+
+        m_loop->unregisterEvent(m_fd);
+        close(m_fd);
+        m_fd = -1;
+    }
 
     void IntervalHandle::resetInterval(std::chrono::milliseconds interval)
     {
