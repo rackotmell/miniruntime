@@ -28,8 +28,8 @@ namespace miniruntime {
         return *this;
     }
 
-    HandleBase::HandleBase(EventLoop* loop, int fd)
-        : m_loop(loop), m_fd(fd), m_ownFd(false)
+    HandleBase::HandleBase(EventLoop* loop, int fd, bool ownFd)
+        : m_loop(loop), m_fd(fd), m_ownFd(ownFd)
     {}
 
     HandleBase::~HandleBase()
@@ -46,13 +46,11 @@ namespace miniruntime {
         return m_loop && m_fd >= 0;
     }
 
-    EventHandle::EventHandle(EventLoop* loop, int fd) : HandleBase(loop, fd)
-    { }
+    EventHandle::EventHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, false)
+    {}
 
-    TriggerHandle::TriggerHandle(EventLoop* loop, int fd) : HandleBase(loop, fd)
-    {
-        m_ownFd = true;
-    }
+    TriggerHandle::TriggerHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, true)
+    {}
 
     void TriggerHandle::trigger() const
     {
@@ -63,7 +61,7 @@ namespace miniruntime {
     }
 
     TimerHandle::TimerHandle(EventLoop* loop, int fd)
-        : HandleBase(loop, fd)
+        : HandleBase(loop, fd, true)
         , m_fired(std::make_shared<std::atomic<bool>>(false))
     {
         m_ownFd = true;
@@ -86,8 +84,8 @@ namespace miniruntime {
         return m_fired->load();
     }
 
-    IntervalHandle::IntervalHandle(EventLoop* loop, int fd) : HandleBase(loop, fd)
-    { }
+    IntervalHandle::IntervalHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, true)
+    {}
 
     void IntervalHandle::cancel()
     {

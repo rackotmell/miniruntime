@@ -15,7 +15,7 @@ namespace miniruntime {
         std::mutex mutex;
         std::condition_variable cv;
         std::variant<std::monostate, T, std::exception_ptr> result;
-        std::atomic<bool> ready;
+        std::atomic<bool> ready{false};
     };
 
     template<>
@@ -23,7 +23,7 @@ namespace miniruntime {
         std::mutex mutex;
         std::condition_variable cv;
         std::optional<std::exception_ptr> result;
-        std::atomic<bool> ready;
+        std::atomic<bool> ready{false};
     };
 
 

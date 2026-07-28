@@ -22,7 +22,7 @@ namespace miniruntime {
         int m_fd;
         bool m_ownFd;
 
-        HandleBase(EventLoop* loop, int fd);
+        HandleBase(EventLoop* loop, int fd, bool ownFd);
     };
 
 
