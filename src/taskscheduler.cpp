@@ -13,6 +13,7 @@ namespace miniruntime {
     TaskScheduler::TaskScheduler(size_t minParallelTasks, size_t maxParallelTasks)
         : m_pool(minParallelTasks, maxParallelTasks)
         , m_nextId(1)
+        , m_initialized(false)
     {}
 
     TaskScheduler::~TaskScheduler()
@@ -25,6 +26,11 @@ namespace miniruntime {
 
     void TaskScheduler::init()
     {
+        if (m_initialized) {
+            LOG_WARNING("TaskScheduler already initialized");
+            return;
+        }
+
         LOG_INFO("TaskScheduler init started");
         m_loopThread = std::jthread([this] { m_loop.run(); });
 
@@ -64,6 +70,7 @@ namespace miniruntime {
             LOG_DEBUG("TaskScheduler::cancel manualy cancel timer with id={}", idValue);
             if (timerIt->second.onCancel)
                 timerIt->second.onCancel();
+            timerIt->second.handle.cancel();
             m_timers.erase(timerIt);
             return true;
         }
@@ -72,6 +79,7 @@ namespace miniruntime {
             LOG_DEBUG("TaskScheduler::cancel manualy cancel interval with id={}", idValue);
             if (intervalIt->second.onCancel)
                 intervalIt->second.onCancel();
+            intervalIt->second.handle.cancel();
             m_intervals.erase(intervalIt);
             return true;
         }

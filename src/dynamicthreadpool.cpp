@@ -82,7 +82,7 @@ namespace miniruntime {
 
     void DynamicThreadPool::createNThreads(size_t n)
     {
-        for (int i = 0; i < n; ++i) {
+        for (size_t i = 0; i < n; ++i) {
             m_threads.emplace_back([this](std::stop_token st){
                 worker(std::move(st));
             });

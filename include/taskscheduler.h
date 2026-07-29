@@ -172,6 +172,7 @@ namespace miniruntime {
         std::unordered_map<uint64_t, IntervalEntry> m_intervals;
 
         uint64_t m_nextId;
+        bool m_initialized;
     };
 
 }
