@@ -1,13 +1,15 @@
 #pragma once
 
+#include <cstdint>
 #include <exception>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
-#include <list>
 
 #include "dynamicthreadpool.h"
 #include "eventloop.h"
@@ -34,7 +36,6 @@ namespace miniruntime {
 
             using ResultType = std::invoke_result_t<F, Args...>;
             auto promise = std::make_shared<Promise<ResultType>>();
-            auto future = promise->getFuture();
 
             m_pool.enqueue([
                 promise,
@@ -53,18 +54,15 @@ namespace miniruntime {
                 }
             });
 
-            return future;
+            return promise->getFuture();
         }
 
         template<typename F, typename... Args>
         auto schedule(std::chrono::milliseconds delay, F&& f, Args&&... args)
             -> Future<std::invoke_result_t<F, Args...>>
         {
-            LOG_DEBUG("TaskScheduler:schedule called with delay={}", delay);
-
             using ResultType = std::invoke_result_t<F, Args...>;
             auto promise = std::make_shared<Promise<ResultType>>();
-            auto future = promise->getFuture();
 
             DynamicThreadPool::Task threadPoolTask = [
                 promise,
@@ -82,26 +80,28 @@ namespace miniruntime {
                     promise->setException(std::current_exception());
                 }
             };
-
             TimerHandle handle = m_loop.createTimer(
                 delay,
                 [this, task = std::move(threadPoolTask)] {
                     m_pool.enqueue(std::move(task));
                 }
             );
+            uint64_t id;
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                id = m_nextId++;
+                m_timers.try_emplace(id, std::move(handle));
+            }
+            promise->setId(id);
+            LOG_DEBUG("TaskScheduler:schedule task scheduled, id={}, delay={}", id, delay);
 
-            std::lock_guard<std::mutex> lock(m_timerMutex);
-            m_timers.push_back(std::move(handle));
-
-            return future;
+            return promise->getFuture();
         }
 
         template<typename F, typename... Args>
         auto scheduleInterval(std::chrono::milliseconds interval, F&& f, Args&&... args)
             -> std::shared_ptr<SharedValue<std::invoke_result_t<F, Args...>>>
         {
-            LOG_DEBUG("TaskScheduler::scheduleInterval called with interval={}", interval);
-
             using ResultType = std::invoke_result_t<F, Args...>;
             auto value = std::make_shared<SharedValue<ResultType>>();
 
@@ -121,24 +121,27 @@ namespace miniruntime {
                     valuePtr->setException(std::current_exception());
                 }
             };
-
             IntervalHandle handle = m_loop.createInterval(
                 interval,
                 [this, task = std::move(threadPoolTask)] {
                     m_pool.enqueue(std::move(task));
                 }
             );
-
-            std::lock_guard<std::mutex> lock(m_timerMutex);
-            m_intervals.push_back(std::move(handle));
+            uint64_t id;
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                id = m_nextId++;
+                m_intervals.try_emplace(id, std::move(handle));
+            }
+            value->setId(id);
+            LOG_DEBUG("TaskScheduler::scheduleInterval interval task scheduled, id={}, interval={}", id, interval);
 
             return value;
         }
 
         void init();
         void stop();
-
-        
+        bool cancel(std::optional<uint64_t> id);
 
     private:
         DynamicThreadPool m_pool;
@@ -146,11 +149,11 @@ namespace miniruntime {
         std::jthread m_loopThread;
         std::unique_ptr<IntervalHandle> m_timerCleaner;
         
-        std::mutex m_timerMutex;
-        std::list<TimerHandle> m_timers;
+        std::mutex m_mutex;
+        std::unordered_map<uint64_t, TimerHandle> m_timers;
+        std::unordered_map<uint64_t, IntervalHandle> m_intervals;
 
-        std::mutex m_intervalMutex;
-        std::list<IntervalHandle> m_intervals;
+        uint64_t m_nextId;
     };
 
 }

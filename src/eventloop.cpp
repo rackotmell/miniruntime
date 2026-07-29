@@ -144,7 +144,7 @@ namespace miniruntime {
                 throw std::runtime_error("epoll wait error");
             } 
 
-            LOG_DEBUG("epoll_wait return {} events", n);
+            //LOG_DEBUG("epoll_wait return {} events", n);
 
             for (int i = 0; i < n; ++i) {
                 const auto fd = events[i].data.fd;

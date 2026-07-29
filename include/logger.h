@@ -97,12 +97,11 @@ namespace miniruntime {
 
         void writeMessage(const LogMessage& message) {
             *m_output << std::format(
-                "[{0:%F} {0:%T}] [{1:}] [{2:}:{3:} {4:}] {5:}\n",
+                "[{0:%F} {0:%T}] [{1:}] [{2:}:{3:}] {4:}\n",
                 message.timestamp,
                 levelToString(message.level),
                 message.source.file_name(),
                 message.source.line(),
-                message.source.function_name(),
                 message.message
             ) << std::flush;
         }

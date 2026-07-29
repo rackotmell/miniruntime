@@ -1,5 +1,6 @@
 #include "taskscheduler.h"
 #include "handle.h"
+#include "logger.h"
 
 #include <chrono>
 #include <cstddef>
@@ -11,6 +12,7 @@ namespace miniruntime {
 
     TaskScheduler::TaskScheduler(size_t minParallelTasks, size_t maxParallelTasks)
         : m_pool(minParallelTasks, maxParallelTasks)
+        , m_nextId(1)
     {}
 
     TaskScheduler::~TaskScheduler()
@@ -27,25 +29,14 @@ namespace miniruntime {
             std::chrono::seconds(5),
             [this] {
                 {
-                    std::lock_guard lock(m_timerMutex);
+                    std::lock_guard lock(m_mutex);
                     auto expiredTimersCount = m_timers.size();
 
-                    m_timers.remove_if([](TimerHandle& timer) {
-                        return timer.fired() || !timer.valid();
+                    std::erase_if(m_timers, [](auto& pair) {
+                        return pair.second.fired() || !pair.second.valid();
                     });
                     expiredTimersCount -= m_timers.size();
                     LOG_INFO("TaskScheduler clean up expired timers, removed={}", expiredTimersCount);
-                }
-                {
-                    std::lock_guard lock(m_intervalMutex);
-                    auto expiredintervalCount = m_intervals.size();
-
-                    m_intervals.remove_if([](IntervalHandle& interval) {
-                        return !interval.valid();
-                    });
-                    expiredintervalCount -= m_intervals.size();
-                    LOG_INFO("TaskScheduler clean up expired intervals, removed={}", expiredintervalCount);
-
                 }
             }
         ));
@@ -55,6 +46,29 @@ namespace miniruntime {
     void TaskScheduler::stop()
     {
         m_loop.stop();
+    }
+
+    bool TaskScheduler::cancel(std::optional<uint64_t> id)
+    {
+        if (!id)
+            return false;
+
+        auto idValue = id.value();
+        std::lock_guard lock(m_mutex);
+
+        auto timerIt = m_timers.find(idValue);
+        if (timerIt != m_timers.end()) {
+            LOG_DEBUG("TaskScheduler::cancel manualy cancel timer with id={}", idValue);
+            m_timers.erase(timerIt);
+            return true;
+        }
+        auto intervalIt = m_intervals.find(idValue);
+        if (intervalIt != m_intervals.end()) {
+            LOG_DEBUG("TaskScheduler::cancel manualy cancel interval with id={}", idValue);
+            m_intervals.erase(intervalIt);
+            return true;
+        }
+        return false;
     }
 
 }

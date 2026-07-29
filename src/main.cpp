@@ -1,8 +1,11 @@
 #include "logger.h"
 #include "taskscheduler.h"
 #include <chrono>
+#include <thread>
 
 int main() {
+    using namespace std::chrono_literals;
+    
     miniruntime::TaskScheduler scheduler;
     scheduler.init();
 
@@ -27,6 +30,10 @@ int main() {
         if (val2)
             LOG_DEBUG("TaskScheduler schedule interval called. Future result={}", val2);
     }
+
+    scheduler.cancel(shared->getId());
+
+    std::this_thread::sleep_for(5s);
 
     scheduler.stop();
 }

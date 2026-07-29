@@ -1,6 +1,7 @@
 #pragma once
 
 #include <condition_variable>
+#include <cstdint>
 #include <exception>
 #include <mutex>
 #include <optional>
@@ -48,6 +49,16 @@ namespace miniruntime {
             m_closed = true;
             m_cv.notify_all();
         }
+
+        void setId(uint64_t id) {
+            std::lock_guard lock(m_mutex);
+            m_id = id;
+        }
+
+        std::optional<uint64_t> getId() {
+            std::lock_guard lock(m_mutex);
+            return m_id;
+        }
         
     private:
         std::optional<T> m_value;
@@ -55,6 +66,7 @@ namespace miniruntime {
         std::condition_variable m_cv;
         std::exception_ptr m_exception;
         bool m_closed;
+        std::optional<uint64_t> m_id;
     };
 
 
@@ -65,6 +77,8 @@ namespace miniruntime {
         public:
             using Base::close;
             using Base::setException;
+            using Base::setId;
+            using Base::getId;
 
             void set() {
                 Base::set(true);

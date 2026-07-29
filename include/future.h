@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <exception>
 #include <memory>
 #include <mutex>
@@ -16,6 +17,7 @@ namespace miniruntime {
         std::condition_variable cv;
         std::variant<std::monostate, T, std::exception_ptr> result;
         std::atomic<bool> ready{false};
+        std::optional<uint64_t> id;
     };
 
     template<>
@@ -24,6 +26,7 @@ namespace miniruntime {
         std::condition_variable cv;
         std::optional<std::exception_ptr> result;
         std::atomic<bool> ready{false};
+        std::optional<uint64_t> id;
     };
 
 
@@ -52,6 +55,11 @@ namespace miniruntime {
         bool isReady() {
             return m_state->ready.load();
         }
+
+        std::optional<uint64_t> getId() {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            return m_state->id;
+        }
         
     private:
         friend class Promise<T>;
@@ -64,6 +72,9 @@ namespace miniruntime {
     template<>
     class Future<void> {
     public:
+        Future(Future&&) = default;
+        Future& operator=(Future&&) = default; 
+
         void get() {
             std::unique_lock<std::mutex> lock(m_state->mutex);
             m_state->cv.wait(lock, [this]{
@@ -77,6 +88,11 @@ namespace miniruntime {
 
         bool isReady() {
             return m_state->ready.load();
+        }
+
+        std::optional<uint64_t> getId() {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            return m_state->id;
         }
 
     private:
@@ -111,6 +127,11 @@ namespace miniruntime {
             return Future<T>(m_state);
         }
 
+        void setId(uint64_t id) {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            m_state->id = id;
+        }
+
     private:
         std::shared_ptr<FutureState<T>> m_state;
     };
@@ -135,6 +156,11 @@ namespace miniruntime {
 
         Future<void> getFuture() {
             return Future<void>(m_state);
+        }
+
+        void setId(uint64_t id) {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            m_state->id = id;
         }
 
     private:
