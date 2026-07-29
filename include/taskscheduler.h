@@ -13,7 +13,7 @@
 #include "eventloop.h"
 #include "future.h"
 #include "handle.h"
-#include "sharedstate.h"
+#include "sharedvalue.h"
 #include "logger.h"
 
 namespace miniruntime {
