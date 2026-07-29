@@ -80,7 +80,7 @@ namespace miniruntime {
         LOG_DEBUG("DynamicThreadPool::worker stopped by stop_token (id={})", threadId);
     }
 
-    void DynamicThreadPool::createNThreads(int n)
+    void DynamicThreadPool::createNThreads(size_t n)
     {
         for (int i = 0; i < n; ++i) {
             m_threads.emplace_back([this](std::stop_token st){

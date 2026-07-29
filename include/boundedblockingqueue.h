@@ -82,9 +82,7 @@ namespace miniruntime {
         }
         
         void close() {
-            const auto size = m_deque.size();
-
-            m_closed = true;
+            m_closed.store(true);
             m_notEmptyCv.notify_all();
             m_notFullCv.notify_all();
         }

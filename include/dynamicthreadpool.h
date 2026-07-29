@@ -38,7 +38,7 @@ namespace miniruntime {
         std::mutex m_mutex;
 
         void worker(std::stop_token stopToken);
-        void createNThreads(int n);
+        void createNThreads(size_t n);
         void adjustSize();
 
     };

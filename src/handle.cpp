@@ -63,9 +63,7 @@ namespace miniruntime {
     TimerHandle::TimerHandle(EventLoop* loop, int fd)
         : HandleBase(loop, fd, true)
         , m_fired(std::make_shared<std::atomic<bool>>(false))
-    {
-        m_ownFd = true;
-    }
+    {}
 
     void TimerHandle::cancel()
     {

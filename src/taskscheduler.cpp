@@ -13,6 +13,11 @@ namespace miniruntime {
         : m_pool(minParallelTasks, maxParallelTasks)
     {}
 
+    TaskScheduler::~TaskScheduler()
+    {
+        m_loopThread.join();
+    }
+
     void TaskScheduler::init()
     {
         LOG_INFO("TaskScheduler init started");
@@ -26,7 +31,7 @@ namespace miniruntime {
                     auto expiredTimersCount = m_timers.size();
 
                     m_timers.remove_if([](TimerHandle& timer) {
-                        return timer.fired();
+                        return timer.fired() || !timer.valid();
                     });
                     expiredTimersCount -= m_timers.size();
                     LOG_INFO("TaskScheduler clean up expired timers, removed={}", expiredTimersCount);

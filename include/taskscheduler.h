@@ -24,6 +24,7 @@ namespace miniruntime {
             size_t minParallelTasks = std::thread::hardware_concurrency(),
             size_t maxParallelTasks = 2 * std::thread::hardware_concurrency()
         );
+        ~TaskScheduler();
 
         template<typename F, typename... Args>
         auto execute(F&& f, Args&&... args) 
@@ -112,7 +113,7 @@ namespace miniruntime {
                 try {
                     if constexpr (std::is_void_v<ResultType>) {
                         func(args...);
-                        valuePtr->set(true);
+                        valuePtr->set();
                     } else {
                         valuePtr->set(func(args...));
                     }
@@ -136,6 +137,8 @@ namespace miniruntime {
 
         void init();
         void stop();
+
+        
 
     private:
         DynamicThreadPool m_pool;

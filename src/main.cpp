@@ -25,7 +25,7 @@ int main() {
     for (int i = 0; i < 4; ++i) {
         auto val2 = shared->wait();
         if (val2)
-            LOG_DEBUG("TaskScheduler schedule interval called. Future result={}", val2.value());
+            LOG_DEBUG("TaskScheduler schedule interval called. Future result={}", val2);
     }
 
     scheduler.stop();

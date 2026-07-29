@@ -162,7 +162,7 @@ namespace miniruntime {
     void EventLoop::stop() 
     {
         LOG_DEBUG("EventLoop::stop called");
-        m_stop = true;
+        m_stop.store(true);
     }
 
     void EventLoop::unregisterEvent(int fd)

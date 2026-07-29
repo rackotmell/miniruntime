@@ -59,6 +59,19 @@ namespace miniruntime {
 
 
     template<>
-    class SharedValue<void> : public SharedValue<bool> {};
+    class SharedValue<void> : SharedValue<bool>
+    {
+        using Base = SharedValue<bool>;
+        public:
+            using Base::close;
+            using Base::setException;
+
+            void set() {
+                Base::set(true);
+            }
+            bool wait() {
+                return Base::wait().has_value();
+            }
+    };
 
 }
