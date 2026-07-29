@@ -17,7 +17,10 @@ namespace miniruntime {
 
     TaskScheduler::~TaskScheduler()
     {
-        m_loopThread.join();
+        m_loop.stop();
+        if (m_loopThread.joinable())
+            m_loopThread.join();
+
     }
 
     void TaskScheduler::init()
@@ -33,7 +36,7 @@ namespace miniruntime {
                     auto expiredTimersCount = m_timers.size();
 
                     std::erase_if(m_timers, [](auto& pair) {
-                        return pair.second.fired() || !pair.second.valid();
+                        return pair.second.handle.fired() || !pair.second.handle.valid();
                     });
                     expiredTimersCount -= m_timers.size();
                     LOG_INFO("TaskScheduler clean up expired timers, removed={}", expiredTimersCount);
@@ -59,12 +62,16 @@ namespace miniruntime {
         auto timerIt = m_timers.find(idValue);
         if (timerIt != m_timers.end()) {
             LOG_DEBUG("TaskScheduler::cancel manualy cancel timer with id={}", idValue);
+            if (timerIt->second.onCancel)
+                timerIt->second.onCancel();
             m_timers.erase(timerIt);
             return true;
         }
         auto intervalIt = m_intervals.find(idValue);
         if (intervalIt != m_intervals.end()) {
             LOG_DEBUG("TaskScheduler::cancel manualy cancel interval with id={}", idValue);
+            if (intervalIt->second.onCancel)
+                intervalIt->second.onCancel();
             m_intervals.erase(intervalIt);
             return true;
         }

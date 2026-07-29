@@ -80,17 +80,22 @@ namespace miniruntime {
                     promise->setException(std::current_exception());
                 }
             };
+
             TimerHandle handle = m_loop.createTimer(
                 delay,
                 [this, task = std::move(threadPoolTask)] {
                     m_pool.enqueue(std::move(task));
                 }
             );
+            std::function<void()> onCnacel = [promise] {
+                promise->close();
+            };
+
             uint64_t id;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 id = m_nextId++;
-                m_timers.try_emplace(id, std::move(handle));
+                m_timers.try_emplace(id, TimerEntry{std::move(handle), std::move(onCnacel)});
             }
             promise->setId(id);
             LOG_DEBUG("TaskScheduler:schedule task scheduled, id={}, delay={}", id, delay);
@@ -127,11 +132,14 @@ namespace miniruntime {
                     m_pool.enqueue(std::move(task));
                 }
             );
+            std::function<void()> onCnacel = [value] {
+                value->close();
+            };
             uint64_t id;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 id = m_nextId++;
-                m_intervals.try_emplace(id, std::move(handle));
+                m_intervals.try_emplace(id, IntervalEntry{std::move(handle), std::move(onCnacel)});
             }
             value->setId(id);
             LOG_DEBUG("TaskScheduler::scheduleInterval interval task scheduled, id={}, interval={}", id, interval);
@@ -144,14 +152,24 @@ namespace miniruntime {
         bool cancel(std::optional<uint64_t> id);
 
     private:
+        struct TimerEntry {
+            TimerHandle handle;
+            std::function<void()> onCancel;
+        };
+
+        struct IntervalEntry {
+            IntervalHandle handle;
+            std::function<void()> onCancel;
+        };
+        
         DynamicThreadPool m_pool;
         EventLoop m_loop;
         std::jthread m_loopThread;
         std::unique_ptr<IntervalHandle> m_timerCleaner;
         
         std::mutex m_mutex;
-        std::unordered_map<uint64_t, TimerHandle> m_timers;
-        std::unordered_map<uint64_t, IntervalHandle> m_intervals;
+        std::unordered_map<uint64_t, TimerEntry> m_timers;
+        std::unordered_map<uint64_t, IntervalEntry> m_intervals;
 
         uint64_t m_nextId;
     };

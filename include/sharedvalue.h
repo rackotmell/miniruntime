@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <exception>
@@ -45,8 +46,7 @@ namespace miniruntime {
         }
 
         void close() {
-            std::lock_guard lock(m_mutex);
-            m_closed = true;
+            m_closed.store(true);
             m_cv.notify_all();
         }
 
@@ -65,7 +65,7 @@ namespace miniruntime {
         std::mutex m_mutex;
         std::condition_variable m_cv;
         std::exception_ptr m_exception;
-        bool m_closed;
+        std::atomic<bool> m_closed;
         std::optional<uint64_t> m_id;
     };
 

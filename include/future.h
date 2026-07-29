@@ -18,6 +18,7 @@ namespace miniruntime {
         std::variant<std::monostate, T, std::exception_ptr> result;
         std::atomic<bool> ready{false};
         std::optional<uint64_t> id;
+        std::atomic<bool> closed{false};
     };
 
     template<>
@@ -27,6 +28,7 @@ namespace miniruntime {
         std::optional<std::exception_ptr> result;
         std::atomic<bool> ready{false};
         std::optional<uint64_t> id;
+        std::atomic<bool> closed{false};
     };
 
 
@@ -42,7 +44,7 @@ namespace miniruntime {
         T get() {
             std::unique_lock<std::mutex> lock(m_state->mutex);
             m_state->cv.wait(lock, [this]{
-                return m_state->ready.load();
+                return m_state->ready || m_state->closed;
             });
             
             auto& result = m_state->result;
@@ -59,6 +61,10 @@ namespace miniruntime {
         std::optional<uint64_t> getId() {
             std::lock_guard<std::mutex> lock(m_state->mutex);
             return m_state->id;
+        }
+
+        bool isClosed() {
+            return m_state->closed.load();
         }
         
     private:
@@ -78,7 +84,7 @@ namespace miniruntime {
         void get() {
             std::unique_lock<std::mutex> lock(m_state->mutex);
             m_state->cv.wait(lock, [this]{
-                return m_state->ready.load();
+                return m_state->ready || m_state->closed;
             });
             
             auto& result = m_state->result;
@@ -93,6 +99,10 @@ namespace miniruntime {
         std::optional<uint64_t> getId() {
             std::lock_guard<std::mutex> lock(m_state->mutex);
             return m_state->id;
+        }
+
+        bool isClosed() {
+            return m_state->closed.load();
         }
 
     private:
@@ -132,6 +142,11 @@ namespace miniruntime {
             m_state->id = id;
         }
 
+        void close() {
+            m_state->closed.store(true);
+            m_state->cv.notify_all();
+        }
+
     private:
         std::shared_ptr<FutureState<T>> m_state;
     };
@@ -161,6 +176,11 @@ namespace miniruntime {
         void setId(uint64_t id) {
             std::lock_guard<std::mutex> lock(m_state->mutex);
             m_state->id = id;
+        }
+
+        void close() {
+            m_state->closed.store(true);
+            m_state->cv.notify_all();
         }
 
     private:

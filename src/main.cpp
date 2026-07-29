@@ -5,7 +5,7 @@
 
 int main() {
     using namespace std::chrono_literals;
-    
+
     miniruntime::TaskScheduler scheduler;
     scheduler.init();
 
@@ -32,6 +32,7 @@ int main() {
     }
 
     scheduler.cancel(shared->getId());
+    shared->wait();
 
     std::this_thread::sleep_for(5s);
 
