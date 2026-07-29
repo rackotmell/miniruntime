@@ -87,7 +87,7 @@ namespace miniruntime {
                     m_pool.enqueue(std::move(task));
                 }
             );
-            std::function<void()> onCnacel = [promise] {
+            std::function<void()> onCancel = [promise] {
                 promise->close();
             };
 
@@ -95,7 +95,7 @@ namespace miniruntime {
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 id = m_nextId++;
-                m_timers.try_emplace(id, TimerEntry{std::move(handle), std::move(onCnacel)});
+                m_timers.try_emplace(id, TimerEntry{std::move(handle), std::move(onCancel)});
             }
             promise->setId(id);
             LOG_DEBUG("TaskScheduler:schedule task scheduled, id={}, delay={}", id, delay);
@@ -132,14 +132,14 @@ namespace miniruntime {
                     m_pool.enqueue(std::move(task));
                 }
             );
-            std::function<void()> onCnacel = [value] {
+            std::function<void()> onCancel = [value] {
                 value->close();
             };
             uint64_t id;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 id = m_nextId++;
-                m_intervals.try_emplace(id, IntervalEntry{std::move(handle), std::move(onCnacel)});
+                m_intervals.try_emplace(id, IntervalEntry{std::move(handle), std::move(onCancel)});
             }
             value->setId(id);
             LOG_DEBUG("TaskScheduler::scheduleInterval interval task scheduled, id={}, interval={}", id, interval);

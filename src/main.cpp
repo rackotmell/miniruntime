@@ -18,8 +18,11 @@ int main() {
         return 2;
     });
 
-    auto val = future.get();
-    LOG_DEBUG("TaskScheduler schedule called. Future result={}", val);
+    auto valOpt = future.get();
+    if (valOpt) {
+        auto val = valOpt.value();
+        LOG_DEBUG("TaskScheduler schedule called. Future result={}", val);
+    }
 
     auto shared = scheduler.scheduleInterval(std::chrono::seconds(2), [] {
         LOG_DEBUG("TaskScheduler schedule interval called");

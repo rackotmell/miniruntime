@@ -41,11 +41,14 @@ namespace miniruntime {
         Future(Future&&) = default;
         Future& operator=(Future&&) = default; 
 
-        T get() {
+        std::optional<T> get() {
             std::unique_lock<std::mutex> lock(m_state->mutex);
             m_state->cv.wait(lock, [this]{
                 return m_state->ready || m_state->closed;
             });
+
+            if (m_state->closed)
+                return std::nullopt;
             
             auto& result = m_state->result;
             if (std::holds_alternative<std::exception_ptr>(result))
@@ -86,6 +89,9 @@ namespace miniruntime {
             m_state->cv.wait(lock, [this]{
                 return m_state->ready || m_state->closed;
             });
+
+            if (m_state->closed)
+                return;
             
             auto& result = m_state->result;
             if (result)
