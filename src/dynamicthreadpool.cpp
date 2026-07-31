@@ -97,10 +97,11 @@ namespace miniruntime {
         const auto taskCount = m_taskQueue.size();
 
         if (taskCount > 2 * threadCount && threadCount < m_maxPoolSize) {
+            const auto newThreadsCount = threadCount + 1;
             LOG_INFO("DynamicThreadPool scaling up: new threads count={} (previous={})", 
-                threadCount, threadCount);
+                newThreadsCount, threadCount);
 
-            createNThreads(m_maxPoolSize - threadCount);
+            createNThreads(1);
         }
     }
 
