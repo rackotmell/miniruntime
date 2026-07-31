@@ -148,11 +148,15 @@ namespace miniruntime {
 
             for (int i = 0; i < n; ++i) {
                 const auto fd = events[i].data.fd;
-                const auto it = m_events.find(fd);
-                if (it != m_events.end()) {
-                    const auto& event = it->second;
-                    event.callback(fd);
+                EventCallback cb;
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    auto it = m_events.find(fd);
+                    if (it == m_events.end())
+                        continue;
+                    cb = it->second.callback;
                 }
+                cb(fd);
             }
         }
 
@@ -178,7 +182,7 @@ namespace miniruntime {
     {
         const auto fd = event.fd;
 
-        struct epoll_event ev = {0};
+        struct epoll_event ev = {};
         ev.data.fd = event.fd;
         ev.events = event.epollFlags;
 
