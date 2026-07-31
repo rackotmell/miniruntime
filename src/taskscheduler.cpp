@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -64,23 +65,28 @@ namespace miniruntime {
         if (!id)
             return false;
 
-        auto idValue = id.value();
-        std::lock_guard lock(m_mutex);
-
-        auto timerIt = m_timers.find(idValue);
-        if (timerIt != m_timers.end()) {
-            LOG_DEBUG("TaskScheduler::cancel manualy cancel timer with id={}", idValue);
-            if (timerIt->second.onCancel)
-                timerIt->second.onCancel();
-            m_timers.erase(timerIt);
-            return true;
+        std::function<void()> onCancel;
+        {
+            std::lock_guard lock(m_mutex);
+            auto idValue = id.value();
+            auto timerIt = m_timers.find(idValue);
+            if (timerIt != m_timers.end()) {
+                LOG_DEBUG("TaskScheduler::cancel manualy cancel timer with id={}", idValue);
+                if (timerIt->second.onCancel)
+                    onCancel = timerIt->second.onCancel;
+                m_timers.erase(timerIt);
+            } else {
+                auto intervalIt = m_intervals.find(idValue);
+                if (intervalIt != m_intervals.end()) {
+                    LOG_DEBUG("TaskScheduler::cancel manualy cancel interval with id={}", idValue);
+                    if (intervalIt->second.onCancel)
+                        onCancel = intervalIt->second.onCancel;
+                    m_intervals.erase(intervalIt);
+                }
+            }
         }
-        auto intervalIt = m_intervals.find(idValue);
-        if (intervalIt != m_intervals.end()) {
-            LOG_DEBUG("TaskScheduler::cancel manualy cancel interval with id={}", idValue);
-            if (intervalIt->second.onCancel)
-                intervalIt->second.onCancel();
-            m_intervals.erase(intervalIt);
+        if (onCancel) {
+            onCancel();
             return true;
         }
         return false;
