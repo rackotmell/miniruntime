@@ -174,7 +174,11 @@ namespace miniruntime {
         LOG_DEBUG("EventLoop::unregisterEvent: fd={}", fd);
 
         std::lock_guard<std::mutex> lock(m_mutex);
-        epoll_ctl(m_epollFd, EPOLL_CTL_DEL, fd, nullptr);
+        if (epoll_ctl(m_epollFd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
+            if (errno != ENOENT) {
+                LOG_WARNING("epoll_ctl del failed, fd={}", fd);
+            }
+        }
         m_events.erase(fd);
     }
 
@@ -186,7 +190,19 @@ namespace miniruntime {
         ev.data.fd = event.fd;
         ev.events = event.epollFlags;
 
-        epoll_ctl(m_epollFd, EPOLL_CTL_ADD, fd, &ev);
+        if (epoll_ctl(m_epollFd, EPOLL_CTL_ADD, fd, &ev) == -1) {
+            if (errno == EEXIST) {
+                if (epoll_ctl(m_epollFd, EPOLL_CTL_MOD, fd, &ev) == -1) {
+                    LOG_ERROR("epol_ctl mod failed, fd={}", fd);
+                    throw std::runtime_error("epol_ctl mod failed");
+                }
+                LOG_DEBUG("EventLoop::registerEvent event re-registered, fd={}", fd);
+            } else {
+                const char* errorStr = strerror(errno);
+                LOG_ERROR("epoll_ctl failed: {}", errorStr);
+                throw std::runtime_error("epoll_ctl failed");
+            }
+        }
         m_events[fd] = std::move(event);
     }
 
