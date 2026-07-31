@@ -35,7 +35,7 @@ namespace miniruntime {
         const size_t m_minPoolSize;
         const size_t m_maxPoolSize;
 
-        std::mutex m_mutex;
+        std::timed_mutex m_mutex;
 
         void worker(std::stop_token stopToken);
         void createNThreads(size_t n);

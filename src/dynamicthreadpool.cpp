@@ -25,15 +25,29 @@ namespace miniruntime {
         LOG_DEBUG("DynamicThreadPool created: min={}, max={}, idleTimeout={}ms, queueSize={}",
               minPoolSize, maxPoolSize, idleMs, taskQueueSize);
 
-
         m_threads.reserve(m_maxPoolSize);
         createNThreads(m_minPoolSize);
     }
 
     DynamicThreadPool::~DynamicThreadPool()
     {
-        LOG_DEBUG("DynamicThreadPool destroyed");
+        {
+            std::lock_guard lock(m_mutex);
+            for (auto& thread : m_threads) {
+                thread.request_stop();
+            }
+        }
         m_taskQueue.close();
+        {
+            std::lock_guard lock(m_mutex);
+            for (auto& thread : m_threads) {
+                if (thread.joinable())
+                    thread.join();
+            }
+        }
+
+
+        LOG_DEBUG("DynamicThreadPool destroyed");
     }
 
     void DynamicThreadPool::enqueue(Task task)
@@ -58,7 +72,13 @@ namespace miniruntime {
                 continue;
             }
 
-            std::lock_guard<std::mutex> lock(m_mutex);
+            // Lock with timeout to avoid deadlock with destructor
+            std::unique_lock lock(m_mutex, std::defer_lock);
+            constexpr auto lockTimeout = std::chrono::milliseconds(50);
+
+            if (!lock.try_lock_for(lockTimeout))
+                continue;
+
             if (m_threads.size() <= m_minPoolSize)
                 continue;
 
@@ -91,7 +111,7 @@ namespace miniruntime {
 
     void DynamicThreadPool::adjustSize()
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
 
         const auto threadCount = m_threads.size();
         const auto taskCount = m_taskQueue.size();
