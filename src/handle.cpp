@@ -13,6 +13,8 @@
 
 namespace miniruntime {
 
+    // Per-handle state: the owning loop, the wrapped fd, whether the fd should
+    // be closed on release, and an optional shared fired flag (timers only).
     struct HandleBase::Impl {
         EventLoop* loop;
         int fd;
@@ -58,9 +60,11 @@ namespace miniruntime {
         m_impl->fd = -1;
     }
 
+    // EventHandle never owns the fd: the caller keeps ownership.
     EventHandle::EventHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, false)
     {}
 
+    // TriggerHandle owns its eventfd.
     TriggerHandle::TriggerHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, true)
     {}
 
@@ -72,6 +76,7 @@ namespace miniruntime {
         }
         LOG_DEBUG("TriggerHandle::trigger on fd={}", m_impl->fd);
 
+        // Writing 1 to the eventfd makes the loop's epoll_wait return.
         uint64_t one = 1;
         write(m_impl->fd, &one, sizeof(one));
     }
@@ -79,6 +84,8 @@ namespace miniruntime {
     TimerHandle::TimerHandle(EventLoop* loop, int fd)
         : HandleBase(loop, fd, true)
     {
+        // The fired flag is shared with the loop so it could be setted
+        // from event-loop.
         m_impl->fired = std::make_shared<std::atomic<bool>>(false);
     }
 
@@ -98,6 +105,7 @@ namespace miniruntime {
         return m_impl->fired;
     }
 
+    // IntervalHandle owns its timerfd.
     IntervalHandle::IntervalHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, true)
     {}
 
@@ -114,6 +122,7 @@ namespace miniruntime {
             return;
         }
 
+        // Re-arm the timerfd with the new period on the loop.
         m_impl->loop->resetTimerInterval(m_impl->fd, interval);
     }
 }
