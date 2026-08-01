@@ -1,0 +1,35 @@
+BasedOnStyle: LLVM
+
+# ── отступы ────────────────────────────────────────
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+NamespaceIndentation: None          # namespace без отступа
+IndentAccessModifiers: false        # public:/private: на уровне класса
+AccessModifierOffset: -4
+
+# ── скобки ─────────────────────────────────────────
+BreakBeforeBraces: Linux
+AllowShortFunctionsOnASingleLine: All
+AllowShortCompoundRequirementOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLambdasOnASingleLine: All
+
+# ── длина строки ───────────────────────────────────
+ColumnLimit: 100
+BinPackArguments: false
+BinPackParameters: false
+AllowAllParametersOfDeclarationOnNextLine: true
+
+# ── указатели/ссылки ───────────────────────────────
+DerivePointerAlignment: false
+PointerAlignment: Left              # int* p
+ReferenceAlignment: Left            # int& x (ссылка слева, у типа)
+
+# ── прочее ─────────────────────────────────────────
+SortIncludes: CaseSensitive
+SpacesInAngles: false               # template<typename T>, std::function<void()>
+MaxEmptyLinesToKeep: 2
+SpaceAfterCStyleCast: true
+SpacesInParentheses: false
