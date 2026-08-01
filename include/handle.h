@@ -1,5 +1,6 @@
 # pragma once
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 
@@ -18,20 +19,17 @@ namespace miniruntime {
         bool valid() const;
 
     protected:
-        EventLoop* m_loop;
-        int m_fd;
-        bool m_ownFd;
-
         HandleBase(EventLoop* loop, int fd, bool ownFd);
+
+        void release();
+
+        struct Impl;
+        std::unique_ptr<Impl> m_impl;
     };
 
 
     class EventHandle : public HandleBase {
         friend class EventLoop;
-
-    public:
-        using HandleBase::HandleBase;
-
     private:
         EventHandle(EventLoop* loop, int fd);
     };
@@ -39,9 +37,7 @@ namespace miniruntime {
 
     class TriggerHandle : public HandleBase {
         friend class EventLoop;
-
     public:
-        using HandleBase::HandleBase;
         void trigger() const;
 
     private:
@@ -51,29 +47,24 @@ namespace miniruntime {
 
     class TimerHandle : public HandleBase {
         friend class EventLoop;
-
     public:
-        using HandleBase::HandleBase;
         void cancel();
-        bool fired();
+        bool fired() const;
     
     private:
         TimerHandle(EventLoop* loop, int fd);
-        std::shared_ptr<std::atomic<bool>> m_fired;
+        std::shared_ptr<std::atomic<bool>> firedAccess();
     };
 
 
     class IntervalHandle : public HandleBase {
         friend class EventLoop;
-
     public:
-        using HandleBase::HandleBase;
         void cancel();
         void resetInterval(std::chrono::milliseconds interval);
     
     private:
         IntervalHandle(EventLoop* loop, int fd);
-
     };
 
 }

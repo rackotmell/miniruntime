@@ -138,11 +138,11 @@ TimerHandle EventLoop::createTimer(std::chrono::milliseconds timeout, TimerCallb
 
     // Flag the handle as fired.
     Event event = m_impl->prepareEvent(
-        fd, EPOLLIN, EventType::TIMER, [fired = timer.m_fired, cb = std::move(callback)](int fd) {
+        fd, EPOLLIN, EventType::TIMER, [fired = timer.firedAccess(), cb = std::move(callback)](int fd) {
             uint64_t val;
             read(fd, &val, sizeof(val));
             if (cb) cb();
-            fired->store(true);
+            fired->store(true, std::memory_order_release);
         });
 
     std::lock_guard lock(m_impl->mutex);

@@ -13,37 +13,49 @@
 
 namespace miniruntime {
 
+    struct HandleBase::Impl {
+        EventLoop* loop;
+        int fd;
+        bool ownFd;
+        std::shared_ptr<std::atomic<bool>> fired;
+    };
+
     HandleBase::HandleBase(HandleBase&& handle) noexcept
-        : m_loop(std::exchange(handle.m_loop, nullptr))
-        , m_fd(std::exchange(handle.m_fd, -1))
-        , m_ownFd(std::exchange(handle.m_ownFd, false))
+        : m_impl(std::exchange(handle.m_impl, nullptr))
     {}
 
     HandleBase& HandleBase::operator=(HandleBase&& handle) noexcept
     {
-        m_loop = std::exchange(handle.m_loop, nullptr);
-        m_fd = std::exchange(handle.m_fd, -1);
-        m_ownFd = std::exchange(handle.m_ownFd, false);
-
+        if (this != &handle) {
+            release();
+            m_impl = std::exchange(handle.m_impl, nullptr);
+        }
         return *this;
     }
 
     HandleBase::HandleBase(EventLoop* loop, int fd, bool ownFd)
-        : m_loop(loop), m_fd(fd), m_ownFd(ownFd)
+        : m_impl(std::make_unique<Impl>(Impl{loop, fd, ownFd, nullptr}))
     {}
 
     HandleBase::~HandleBase()
     {
-        if (valid()) {
-            m_loop->unregisterEvent(m_fd);
-            if (m_ownFd)
-                close(m_fd);
-        }
+        release();
     }
 
     bool HandleBase::valid() const
     {
-        return m_loop && m_fd >= 0;
+        return m_impl && m_impl->loop && m_impl->fd >= 0;
+    }
+
+    void HandleBase::release()
+    {
+        if (!valid())
+            return;
+
+        m_impl->loop->unregisterEvent(m_impl->fd);
+            if (m_impl->ownFd)
+                close(m_impl->fd);
+        m_impl->fd = -1;
     }
 
     EventHandle::EventHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, false)
@@ -54,32 +66,36 @@ namespace miniruntime {
 
     void TriggerHandle::trigger() const
     {
-        LOG_DEBUG("TriggerHandle::trigger on fd={}", m_fd);
+        if (!valid()) {
+            LOG_WARNING("TriggerHandle::trigger called trigger of invalid handle");
+            return;
+        }
+        LOG_DEBUG("TriggerHandle::trigger on fd={}", m_impl->fd);
 
         uint64_t one = 1;
-        write(m_fd, &one, sizeof(one));
+        write(m_impl->fd, &one, sizeof(one));
     }
 
     TimerHandle::TimerHandle(EventLoop* loop, int fd)
         : HandleBase(loop, fd, true)
-        , m_fired(std::make_shared<std::atomic<bool>>(false))
-    {}
+    {
+        m_impl->fired = std::make_shared<std::atomic<bool>>(false);
+    }
 
     void TimerHandle::cancel()
     {
-        LOG_DEBUG("TimerHandle::cancel on fd={}", m_fd);
-        
-        if (!valid())
-            return;
-
-        m_loop->unregisterEvent(m_fd);
-        close(m_fd);
-        m_fd = -1;
+        LOG_DEBUG("TimerHandle::cancel on fd={}", m_impl->fd);
+        release();
     }
 
-    bool TimerHandle::fired()
+    bool TimerHandle::fired() const
     {
-        return m_fired->load();
+        return m_impl->fired->load(std::memory_order_acquire);
+    }
+
+    std::shared_ptr<std::atomic<bool>> TimerHandle::firedAccess()
+    {
+        return m_impl->fired;
     }
 
     IntervalHandle::IntervalHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, true)
@@ -87,21 +103,17 @@ namespace miniruntime {
 
     void IntervalHandle::cancel()
     {
-        LOG_DEBUG("IntervalHandle::cancel on fd={}", m_fd);
-        
-        if (!valid())
-            return;
-
-        m_loop->unregisterEvent(m_fd);
-        close(m_fd);
-        m_fd = -1;
+        LOG_DEBUG("IntervalHandle::cancel on fd={}", m_impl->fd);
+        release();
     }
 
     void IntervalHandle::resetInterval(std::chrono::milliseconds interval)
     {
-        if (!valid())
+        if (!valid()) {
+            LOG_WARNING("IntervalHandle::resetInterval called interval reset of invalid handle");
             return;
+        }
 
-        m_loop->resetTimerInterval(m_fd, interval);
+        m_impl->loop->resetTimerInterval(m_impl->fd, interval);
     }
 }
