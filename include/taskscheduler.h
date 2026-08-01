@@ -4,17 +4,9 @@
 #include <exception>
 #include <functional>
 #include <memory>
-#include <mutex>
-#include <optional>
-#include <thread>
-#include <type_traits>
-#include <unordered_map>
-#include <utility>
+#include <chrono>
 
-#include "dynamicthreadpool.h"
-#include "eventloop.h"
 #include "future.h"
-#include "handle.h"
 #include "sharedvalue.h"
 #include "logger.h"
 
@@ -37,7 +29,7 @@ namespace miniruntime {
             using ResultType = std::invoke_result_t<F, Args...>;
             auto promise = std::make_shared<Promise<ResultType>>();
 
-            m_pool.enqueue([
+            enqueue([
                 promise,
                 func = std::forward<F>(f),
                 ...args = std::forward<Args>(args)
@@ -64,39 +56,25 @@ namespace miniruntime {
             using ResultType = std::invoke_result_t<F, Args...>;
             auto promise = std::make_shared<Promise<ResultType>>();
 
-            DynamicThreadPool::Task threadPoolTask = [
-                promise,
-                func = std::forward<F>(f),
-                ...args = std::forward<Args>(args)
-            ] {
-                try {
-                    if constexpr (std::is_void_v<ResultType>) {
-                        func(args...);
-                        promise->setValue();
-                    } else {
-                        promise->setValue(func(args...));
+            uint64_t id = createTimer(delay, 
+                [promise, func = std::forward<F>(f),
+                ...args = std::forward<Args>(args)] {
+                    try {
+                        if constexpr (std::is_void_v<ResultType>) {
+                            func(args...);
+                            promise->setValue();
+                        } else {
+                            promise->setValue(func(args...));
+                        }
+                    } catch (...) {
+                        promise->setException(std::current_exception());
                     }
-                } catch (...) {
-                    promise->setException(std::current_exception());
-                }
-            };
-
-            TimerHandle handle = m_loop.createTimer(
-                delay,
-                [this, task = std::move(threadPoolTask)] {
-                    m_pool.enqueue(std::move(task));
+                },
+                [promise] {
+                    promise->close();
                 }
             );
-            std::function<void()> onCancel = [promise] {
-                promise->close();
-            };
 
-            uint64_t id;
-            {
-                std::lock_guard<std::mutex> lock(m_mutex);
-                id = m_nextId++;
-                m_timers.try_emplace(id, TimerEntry{std::move(handle), std::move(onCancel)});
-            }
             promise->setId(id);
             LOG_DEBUG("TaskScheduler:schedule task scheduled, id={}, delay={}", id, delay);
 
@@ -110,37 +88,24 @@ namespace miniruntime {
             using ResultType = std::invoke_result_t<F, Args...>;
             auto value = std::make_shared<SharedValue<ResultType>>();
 
-            DynamicThreadPool::Task threadPoolTask = [
-                valuePtr = value,
-                func = std::forward<F>(f),
-                ...args = std::forward<Args>(args)
-            ] {
-                try {
-                    if constexpr (std::is_void_v<ResultType>) {
-                        func(args...);
-                        valuePtr->set();
-                    } else {
-                        valuePtr->set(func(args...));
+            uint64_t id = createInterval(interval,
+                [valuePtr = value, func = std::forward<F>(f),
+                ...args = std::forward<Args>(args)] {
+                    try {
+                        if constexpr (std::is_void_v<ResultType>) {
+                            func(args...);
+                            valuePtr->set();
+                        } else {
+                            valuePtr->set(func(args...));
+                        }
+                    } catch (...) {
+                        valuePtr->setException(std::current_exception());
                     }
-                } catch (...) {
-                    valuePtr->setException(std::current_exception());
-                }
-            };
-            IntervalHandle handle = m_loop.createInterval(
-                interval,
-                [this, task = std::move(threadPoolTask)] {
-                    m_pool.enqueue(std::move(task));
+                }, 
+                [value] {
+                    value->close();
                 }
             );
-            std::function<void()> onCancel = [value] {
-                value->close();
-            };
-            uint64_t id;
-            {
-                std::lock_guard<std::mutex> lock(m_mutex);
-                id = m_nextId++;
-                m_intervals.try_emplace(id, IntervalEntry{std::move(handle), std::move(onCancel)});
-            }
             value->setId(id);
             LOG_DEBUG("TaskScheduler::scheduleInterval interval task scheduled, id={}, interval={}", id, interval);
 
@@ -152,27 +117,14 @@ namespace miniruntime {
         bool cancel(std::optional<uint64_t> id);
 
     private:
-        struct TimerEntry {
-            TimerHandle handle;
-            std::function<void()> onCancel;
-        };
+        void enqueue(std::function<void()> task);
+        uint64_t createTimer(std::chrono::milliseconds &delay,
+            std::function<void()> task, std::function<void()> onCancel);
+        uint64_t createInterval(std::chrono::milliseconds &interval,
+            std::function<void()> task, std::function<void()> onCancel);
 
-        struct IntervalEntry {
-            IntervalHandle handle;
-            std::function<void()> onCancel;
-        };
-        
-        DynamicThreadPool m_pool;
-        EventLoop m_loop;
-        std::jthread m_loopThread;
-        std::unique_ptr<IntervalHandle> m_timerCleaner;
-        
-        std::mutex m_mutex;
-        std::unordered_map<uint64_t, TimerEntry> m_timers;
-        std::unordered_map<uint64_t, IntervalEntry> m_intervals;
-
-        uint64_t m_nextId;
-        bool m_initialized;
+        struct Impl;
+        std::unique_ptr<Impl> m_impl;
     };
 
 }
