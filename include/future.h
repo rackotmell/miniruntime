@@ -1,195 +1,130 @@
 #pragma once
 
-#include <atomic>
-#include <cstdint>
-#include <exception>
-#include <memory>
-#include <optional>
-#include <type_traits>
-#include <variant>
+#include "detail/future.h"
 
-#include "logger.h"
+namespace miniruntime
+{
 
-namespace miniruntime {
+template <typename T> class Promise;
 
-    enum class FutureStatus {
-        Pending,
-        Ready,
-        Closed
-    };
+/**
+ * @brief Receiving side of a Promise/Future pair.
+ *
+ * Future shares the result state owned by a Promise and lets the consumer
+ * wait for or poll the task outcome. get() blocks until a value or an
+ * exception is published, and re-throws any captured exception. The
+ * underlying state is shared via shared_ptr, so futures are copyable.
+ */
+template <typename T> class Future : public detail::FutureBase<detail::FutureState<T>>
+{
+    friend class Promise<T>;
 
-    struct FutureStateBase {
-        std::atomic<FutureStatus> status{FutureStatus::Pending};
-        std::atomic<uint64_t> id;
-        std::atomic<bool> idSetted{false};
-        std::atomic<bool> blocked{false};
-    };
+public:
+    using detail::FutureBase<detail::FutureState<T>>::FutureBase;
 
-    template<typename T>
-    struct FutureState : FutureStateBase {
-        std::variant<std::monostate, T, std::exception_ptr> result;
-    };
+    /**
+     * @brief Blocks until the result is available.
+     * @return The task result, or std::nullopt if the future was closed.
+     * @throws The task exception, if the promise captured one.
+     */
+    std::optional<T> get()
+    {
+        this->m_state->status.wait(detail::FutureStatus::Pending, std::memory_order_acquire);
 
-    template<>
-    struct FutureState<void> : FutureStateBase {
-        std::variant<std::monostate, std::exception_ptr> result;
-    };
-
-    // Explicit declare concept
-    // FutureState must have result field with std::variant type 
-    template<typename T>
-    struct isVariant : std::false_type {};
-
-    template<typename... Args>
-    struct isVariant<std::variant<Args...>> : std::true_type {};
-
-    template<typename T>
-    concept Variant = isVariant<std::remove_cvref_t<T>>::value;
-
-    template<typename T>
-    concept HasVariantResult = requires (T& obj) {
-        obj.result;
-    } && Variant<decltype(std::declval<T>().result)>;
-
-
-    template<typename T>
-    class Promise;
-
-    template<HasVariantResult State>
-    class FutureBase {
-    public:
-        FutureBase(FutureBase&&) = default;
-        FutureBase& operator=(FutureBase&&) = default;
-
-        bool isReady() {
-            return m_state->status.load(std::memory_order_acquire) == FutureStatus::Ready;
-        }
-
-        std::optional<uint64_t> getId() {
-            if (m_state->idSetted.load(std::memory_order_acquire)) {
-                return m_state->id.load(std::memory_order_acquire);
-            }
+        if (this->m_state->status.load(std::memory_order_acquire) == detail::FutureStatus::Closed)
             return std::nullopt;
+
+        auto& result = this->m_state->result;
+        if (std::holds_alternative<std::exception_ptr>(result))
+            std::rethrow_exception(std::get<std::exception_ptr>(result));
+
+        return std::get<T>(result);
+    }
+};
+
+/**
+ * @brief void specialization of Future: get() returns nothing.
+ */
+template <> class Future<void> : public detail::FutureBase<detail::FutureState<void>>
+{
+    friend class Promise<void>;
+
+public:
+    using detail::FutureBase<detail::FutureState<void>>::FutureBase;
+
+    /**
+     * @brief Blocks until the task completes; re-throws the task exception if any.
+     */
+    void get()
+    {
+        this->m_state->status.wait(detail::FutureStatus::Pending, std::memory_order_acquire);
+
+        if (this->m_state->status.load(std::memory_order_acquire) == detail::FutureStatus::Closed)
+            return;
+
+        auto& result = this->m_state->result;
+        if (std::holds_alternative<std::exception_ptr>(result))
+            std::rethrow_exception(std::get<std::exception_ptr>(result));
+    }
+};
+
+/**
+ * @brief Producing side of a Promise/Future pair.
+ *
+ * Promise lets a task publish its result or exception; the consumer gets
+ * access through getFuture(). setValue()/setException() are one-shot and
+ * wake up every thread blocked on the matching Future::get().
+ */
+template <typename T> class Promise : public detail::PromiseBase<detail::FutureState<T>>
+{
+public:
+    /**
+     * @brief Publishes the result and unblocks all waiting futures.
+     * @param value Result to deliver to the consumer.
+     */
+    void setValue(T value)
+    {
+        // One-shot flag: ignore duplicate deliveries.
+        if (!this->claim(this->m_state->blocked)) {
+            LOG_WARNING("Promise<T> value already setted up");
+            return;
         }
+        this->m_state->result.template emplace<T>(std::move(value));
+        this->m_state->status.store(detail::FutureStatus::Ready, std::memory_order_release);
+        this->m_state->status.notify_all();
+    }
 
-        bool isClosed() {
-            return m_state->status.load(std::memory_order_acquire) == FutureStatus::Closed;
+    /**
+     * @brief Creates a Future sharing this promise's result state.
+     * @return Future linked to this promise.
+     */
+    Future<T> getFuture() { return Future<T>(this->m_state); }
+};
+
+/**
+ * @brief void specialization of Promise: publishes completion only.
+ */
+template <> class Promise<void> : public detail::PromiseBase<detail::FutureState<void>>
+{
+public:
+    /**
+     * @brief Marks the task as completed and unblocks all waiting futures.
+     */
+    void setValue()
+    {
+        if (!this->claim(this->m_state->blocked)) {
+            LOG_WARNING("Promise<void> value already setted up");
+            return;
         }
+        this->m_state->status.store(detail::FutureStatus::Ready, std::memory_order_release);
+        this->m_state->status.notify_all();
+    }
 
-    protected:
-        explicit FutureBase(std::shared_ptr<State> state)
-            : m_state(state) {}
+    /**
+     * @brief Creates a Future sharing this promise's result state.
+     * @return Future linked to this promise.
+     */
+    Future<void> getFuture() { return Future<void>(this->m_state); }
+};
 
-        std::shared_ptr<State> m_state;
-    };
-
-    template<typename T>
-    class Future : public FutureBase<FutureState<T>> {
-        friend class Promise<T>;
-    public:
-        using FutureBase<FutureState<T>>::FutureBase;
-
-        std::optional<T> get() {
-            this->m_state->status.wait(FutureStatus::Pending, std::memory_order_acquire);
-
-            if (this->m_state->status.load(std::memory_order_acquire) == FutureStatus::Closed)
-                return std::nullopt;
-            
-            auto& result = this->m_state->result;
-            if (std::holds_alternative<std::exception_ptr>(result))
-                std::rethrow_exception(std::get<std::exception_ptr>(result));
-
-            return std::get<T>(result);
-        }
-    };
-
-    template<>
-    class Future<void> : public FutureBase<FutureState<void>> {
-        friend class Promise<void>;
-    public:
-        using FutureBase<FutureState<void>>::FutureBase;
-
-        void get() {
-            this->m_state->status.wait(FutureStatus::Pending, std::memory_order_acquire);
-
-            if (this->m_state->status.load(std::memory_order_acquire) == FutureStatus::Closed)
-                return;
-            
-            auto& result = this->m_state->result;
-            if (std::holds_alternative<std::exception_ptr>(result))
-                std::rethrow_exception(std::get<std::exception_ptr>(result));
-        }
-    };
-
-
-    template<HasVariantResult State>
-    class PromiseBase {
-    public:
-        PromiseBase() : m_state(std::make_shared<State>()) {}
-
-        void setException(std::exception_ptr ptr) {
-            if (!claim(m_state->blocked)) {
-                LOG_WARNING("Promise exception allready setted up");
-                return;
-            }
-            m_state->result.template emplace<std::exception_ptr>(std::move(ptr));
-            m_state->status.store(FutureStatus::Ready, std::memory_order_release);
-            m_state->status.notify_all();
-        }
-
-        void setId(uint64_t id) {
-            claim(m_state->idSetted);
-            m_state->id.store(id, std::memory_order_release);
-        }
-
-        void close() {
-            m_state->status.store(FutureStatus::Closed, std::memory_order_release);
-            m_state->status.notify_all();
-        }
-        
-    protected:
-        bool claim(std::atomic<bool>& target) {
-            bool expected = false;
-            return target.compare_exchange_strong(expected, true,
-                std::memory_order_acq_rel, std::memory_order_acquire);
-        }
-
-        std::shared_ptr<State> m_state;
-    };
-
-    template<typename T>
-    class Promise : public PromiseBase<FutureState<T>> {
-    public:
-        void setValue(T value) {
-            if (!this->claim(this->m_state->blocked)) {
-                    LOG_WARNING("Promise<T> value already setted up");
-                    return;
-            }
-            this->m_state->result.template emplace<T>(std::move(value));
-            this->m_state->status.store(FutureStatus::Ready, std::memory_order_release);
-            this->m_state->status.notify_all();
-        }
-
-        Future<T> getFuture() {
-            return Future<T>(this->m_state);
-        }
-    };
-
-    template<>
-    class Promise<void> : public PromiseBase<FutureState<void>> {
-    public:
-        void setValue() {
-            if (!this->claim(this->m_state->blocked)) {
-                    LOG_WARNING("Promise<void> value already setted up");
-                    return;
-            }
-            this->m_state->status.store(FutureStatus::Ready, std::memory_order_release);
-            this->m_state->status.notify_all();
-        }
-
-        Future<void> getFuture() {
-            return Future<void>(this->m_state);
-        }
-    };
-
-}
+} // namespace miniruntime
