@@ -9,17 +9,22 @@
 
 namespace miniruntime {
 
+    // Registry entry for a one-shot timer: the event-loop handle plus a
+    // callback to run when the task is cancelled by the user.
     struct TimerEntry {
         TimerHandle handle;
         std::function<void()> onCancel;
     };
 
+    // Registry entry for a recurring interval, same layout as TimerEntry.
     struct IntervalEntry {
         IntervalHandle handle;
         std::function<void()> onCancel;
     };
 
+    // Pimpl implementation of TaskScheduler.
     struct TaskScheduler::Impl {
+        // Constructs the thread pool with the given size bounds.
         Impl(size_t minParallelTasks, size_t maxParallelTasks)
             : pool(minParallelTasks, maxParallelTasks) {}
 
@@ -27,7 +32,7 @@ namespace miniruntime {
         EventLoop loop;
         std::jthread loopThread;
         std::unique_ptr<IntervalHandle> timerCleaner;
-        
+
         std::mutex mutex;
         std::unordered_map<uint64_t, TimerEntry> timers;
         std::unordered_map<uint64_t, IntervalEntry> intervals;
@@ -42,10 +47,11 @@ namespace miniruntime {
 
     TaskScheduler::~TaskScheduler()
     {
+        // Stop the event loop and joins its thread to
+        // guarantees correct destruction order.
         m_impl->loop.stop();
         if (m_impl->loopThread.joinable())
             m_impl->loopThread.join();
-
     }
 
     void TaskScheduler::init()
@@ -56,8 +62,10 @@ namespace miniruntime {
         }
 
         LOG_INFO("TaskScheduler init started");
+        // Start the event loop on a dedicated thread.
         m_impl->loopThread = std::jthread([this] { m_impl->loop.run(); });
 
+        // Install a periodic cleanup that clean already-fired or invalidated timers.
         m_impl->timerCleaner = std::make_unique<IntervalHandle>(m_impl->loop.createInterval(
             std::chrono::seconds(5),
             [this] {
@@ -65,6 +73,7 @@ namespace miniruntime {
                     std::lock_guard lock(m_impl->mutex);
                     auto expiredTimersCount = m_impl->timers.size();
 
+                    // Remove timers that have already fired or were invalidated.
                     std::erase_if(m_impl->timers, [](auto& pair) {
                         return pair.second.handle.fired() || !pair.second.handle.valid();
                     });
@@ -127,6 +136,7 @@ namespace miniruntime {
     ) {
         TimerHandle handle = m_impl->loop.createTimer(
             delay,
+            // When the timer fires, dispatch the task to the pool.
             [this, tpTask = std::move(task)] {
                 m_impl->pool.enqueue(std::move(tpTask));
             }
@@ -141,6 +151,7 @@ namespace miniruntime {
         return id;
     }
 
+    // Bridge: same as createTimer but for a recurring interval.
     uint64_t TaskScheduler::createInterval(
         std::chrono::milliseconds &interval,
         std::function<void()> task,
@@ -148,6 +159,7 @@ namespace miniruntime {
     ) {
         IntervalHandle handle = m_impl->loop.createInterval(
             interval,
+            // On every tick, re-dispatch the task to the pool.
             [this, tpTask = std::move(task)] {
                 m_impl->pool.enqueue(std::move(tpTask));
             }
