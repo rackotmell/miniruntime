@@ -3,9 +3,9 @@
 #include "logger.h"
 
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <cstring>
-#include <ctime>
 #include <cstdint>
 #include <mutex>
 #include <stdexcept>
@@ -17,10 +17,64 @@
 
 namespace miniruntime {
 
-    EventLoop::EventLoop() : m_stop{false}
+    constexpr int MILLI_DIVIDER = 1000;
+    constexpr int NANO_DIVIDER = 1000000;
+
+    struct Event {
+        int fd;
+        uint32_t epollFlags;
+        EventType type;
+        EventLoop::EventCallback callback;
+    };
+
+    struct EventLoop::Impl {
+        int epollFd{-1};
+        std::atomic<bool> stop{false};
+        std::mutex mutex;
+        std::unordered_map<int, Event> events;
+
+        void registerEvent(Event& event) {
+            const auto fd = event.fd;
+
+            struct epoll_event ev = {};
+            ev.data.fd = event.fd;
+            ev.events = event.epollFlags;
+
+            if (epoll_ctl(epollFd, EPOLL_CTL_ADD, fd, &ev) == -1) {
+                if (errno == EEXIST) {
+                    if (epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &ev) == -1) {
+                        LOG_ERROR("epol_ctl mod failed, fd={}", fd);
+                        throw std::runtime_error("epol_ctl mod failed");
+                    }
+                    LOG_DEBUG("EventLoop::registerEvent event re-registered, fd={}", fd);
+                } else {
+                    const char* errorStr = strerror(errno);
+                    LOG_ERROR("epoll_ctl failed: {}", errorStr);
+                    throw std::runtime_error("epoll_ctl failed");
+                }
+            }
+            events[fd] = std::move(event);
+        }
+
+        Event prepareEvent(
+            const int fd,
+            uint32_t epollFlags,
+            EventType type,
+            EventCallback callback
+        ) {
+            return {
+                .fd = fd,
+                .epollFlags = epollFlags,
+                .type = type,
+                .callback = std::move(callback)
+            };
+        }
+    };
+
+    EventLoop::EventLoop() : m_impl(std::make_unique<Impl>())
     {
-        m_epollFd = epoll_create1(0);
-        if (m_epollFd < 0) {
+        m_impl->epollFd = epoll_create1(0);
+        if (m_impl->epollFd < 0) {
             LOG_ERROR("Can not create epoll");
             throw std::runtime_error("Can not create epoll");
         }
@@ -28,8 +82,9 @@ namespace miniruntime {
 
     EventLoop::~EventLoop() 
     {
-        for (auto& [fd, event] : m_events) {
-            epoll_ctl(m_epollFd, EPOLL_CTL_DEL, fd, nullptr);
+        stop();
+        for (auto& [fd, event] : m_impl->events) {
+            epoll_ctl(m_impl->epollFd, EPOLL_CTL_DEL, fd, nullptr);
         }
     }
 
@@ -37,10 +92,10 @@ namespace miniruntime {
     {
         LOG_DEBUG("EventLoop::createEvent: fd={}, flags={:#x}", fd, epollFlags);
 
-        Event event = prepareEvent(fd, epollFlags, type, std::move(callback));
+        Event event = m_impl->prepareEvent(fd, epollFlags, type, std::move(callback));
 
-        std::lock_guard<std::mutex> lock(m_mutex);
-        registerEvent(event);
+        std::lock_guard lock(m_impl->mutex);
+        m_impl->registerEvent(event);
 
         return EventHandle{this, fd};
     }
@@ -53,15 +108,15 @@ namespace miniruntime {
         if (fd < 0)
             throw std::runtime_error("eventfd error");
 
-        Event event = prepareEvent(fd, EPOLLIN, EventType::TRIGGER,
+        Event event = m_impl->prepareEvent(fd, EPOLLIN, EventType::TRIGGER,
             [cb = std::move(callback)](int fd) {
                 uint64_t val;
                 read(fd, &val, sizeof(val));
                 if (cb) cb();
         });
 
-        std::lock_guard<std::mutex> lock(m_mutex);
-        registerEvent(event);
+        std::lock_guard lock(m_impl->mutex);
+        m_impl->registerEvent(event);
 
         return TriggerHandle{this, fd};
     }
@@ -81,7 +136,7 @@ namespace miniruntime {
 
         TimerHandle timer{this, fd};
 
-        Event event = prepareEvent(fd, EPOLLIN, EventType::TIMER,
+        Event event = m_impl->prepareEvent(fd, EPOLLIN, EventType::TIMER,
             [fired = timer.m_fired, cb = std::move(callback)](int fd) {
                 uint64_t val;
                 read(fd, &val, sizeof(val));
@@ -89,9 +144,9 @@ namespace miniruntime {
                 fired->store(true);
         });
 
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_impl->mutex);
         timerfd_settime(fd, 0, &spec, nullptr);
-        registerEvent(event);
+        m_impl->registerEvent(event);
 
         return timer;
     }
@@ -111,16 +166,16 @@ namespace miniruntime {
         spec.it_interval.tv_sec = intervalMs / MILLI_DIVIDER;
         spec.it_interval.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
 
-        Event event = prepareEvent(fd, EPOLLIN, EventType::TIMER,
+        Event event = m_impl->prepareEvent(fd, EPOLLIN, EventType::TIMER,
             [cb = std::move(callback)](int fd) {
                 uint64_t val;
                 read(fd, &val, sizeof(val));
                 if (cb) cb();
         });
 
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_impl->mutex);
         timerfd_settime(fd, 0, &spec, nullptr);
-        registerEvent(event);
+        m_impl->registerEvent(event);
 
         return IntervalHandle(this, fd);
     }
@@ -132,8 +187,8 @@ namespace miniruntime {
         constexpr int EPOLL_TIMEOUT = 100;
         std::array<epoll_event, 64> events;
 
-        while (!m_stop) {
-            int n = epoll_wait(m_epollFd, events.data(), events.size(), EPOLL_TIMEOUT);
+        while (!m_impl->stop.load(std::memory_order_acquire)) {
+            int n = epoll_wait(m_impl->epollFd, events.data(), events.size(), EPOLL_TIMEOUT);
             if (n < 0) {
                 const char* errorStr = strerror(errno);
                 LOG_ERROR("epoll_wait failed: {}", errorStr);
@@ -144,15 +199,13 @@ namespace miniruntime {
                 throw std::runtime_error("epoll wait error");
             } 
 
-            //LOG_DEBUG("epoll_wait return {} events", n);
-
             for (int i = 0; i < n; ++i) {
                 const auto fd = events[i].data.fd;
                 EventCallback cb;
                 {
-                    std::lock_guard<std::mutex> lock(m_mutex);
-                    auto it = m_events.find(fd);
-                    if (it == m_events.end())
+                    std::lock_guard<std::mutex> lock(m_impl->mutex);
+                    auto it = m_impl->events.find(fd);
+                    if (it == m_impl->events.end())
                         continue;
                     cb = it->second.callback;
                 }
@@ -166,58 +219,20 @@ namespace miniruntime {
     void EventLoop::stop() 
     {
         LOG_DEBUG("EventLoop::stop called");
-        m_stop.store(true);
+        m_impl->stop.store(true, std::memory_order_release);
     }
 
     void EventLoop::unregisterEvent(int fd)
     {
         LOG_DEBUG("EventLoop::unregisterEvent: fd={}", fd);
 
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (epoll_ctl(m_epollFd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
+        std::lock_guard lock(m_impl->mutex);
+        if (epoll_ctl(m_impl->epollFd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
             if (errno != ENOENT) {
                 LOG_WARNING("epoll_ctl del failed, fd={}", fd);
             }
         }
-        m_events.erase(fd);
-    }
-
-    void EventLoop::registerEvent(Event& event)
-    {
-        const auto fd = event.fd;
-
-        struct epoll_event ev = {};
-        ev.data.fd = event.fd;
-        ev.events = event.epollFlags;
-
-        if (epoll_ctl(m_epollFd, EPOLL_CTL_ADD, fd, &ev) == -1) {
-            if (errno == EEXIST) {
-                if (epoll_ctl(m_epollFd, EPOLL_CTL_MOD, fd, &ev) == -1) {
-                    LOG_ERROR("epol_ctl mod failed, fd={}", fd);
-                    throw std::runtime_error("epol_ctl mod failed");
-                }
-                LOG_DEBUG("EventLoop::registerEvent event re-registered, fd={}", fd);
-            } else {
-                const char* errorStr = strerror(errno);
-                LOG_ERROR("epoll_ctl failed: {}", errorStr);
-                throw std::runtime_error("epoll_ctl failed");
-            }
-        }
-        m_events[fd] = std::move(event);
-    }
-
-    EventLoop::Event EventLoop::prepareEvent(
-        int fd,
-        uint32_t epollFlags,
-        EventType type,
-        EventCallback callback
-    ) {
-        return {
-            .fd = fd,
-            .epollFlags = epollFlags,
-            .type = type,
-            .callback = std::move(callback)
-        };
+        m_impl->events.erase(fd);
     }
 
     void EventLoop::resetTimerInterval(int fd, std::chrono::milliseconds interval)
@@ -232,7 +247,7 @@ namespace miniruntime {
         spec.it_interval.tv_sec = intervalMs / MILLI_DIVIDER;
         spec.it_interval.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
 
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_impl->mutex);
         timerfd_settime(fd, 0, &spec, nullptr);
     }
 

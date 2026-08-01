@@ -1,11 +1,9 @@
 # pragma once
 
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
-#include <mutex>
-#include <unordered_map>
+#include <memory>
 
 #include "handle.h"
 
@@ -17,17 +15,19 @@ namespace miniruntime {
         TIMER,
     };
 
-    constexpr int MILLI_DIVIDER = 1000;
-    constexpr int NANO_DIVIDER = 1000000;
-
     class EventLoop {
+    public:
         using EventCallback = std::function<void(int)>;
         using TriggerCallback = std::function<void()>;
         using TimerCallback = std::function<void()>;
 
-    public:
         EventLoop();
         ~EventLoop();
+
+        EventLoop(const EventLoop&) = delete;
+        EventLoop& operator=(const EventLoop&) = delete;
+        EventLoop(EventLoop&&) = delete;
+        EventLoop& operator=(EventLoop&&) = delete;
 
         [[nodiscard]] EventHandle createEvent(
             int fd,
@@ -49,17 +49,8 @@ namespace miniruntime {
         void stop();
 
     private:
-        int m_epollFd;
-        std::atomic<bool> m_stop;
-        std::mutex m_mutex;
-
-        struct Event {
-            int fd;
-            uint32_t epollFlags;
-            EventType type;
-            EventCallback callback;
-        };
-        std::unordered_map<int, Event> m_events;
+        struct Impl;
+        std::unique_ptr<Impl> m_impl;
 
         friend class HandleBase;
         friend class EventHandle;
@@ -67,13 +58,6 @@ namespace miniruntime {
         friend class TimerHandle;
         friend class IntervalHandle;
         void unregisterEvent(int fd);
-        void registerEvent(Event& event);
-        Event prepareEvent(
-            const int fd,
-            uint32_t epollFlags,
-            EventType type,
-            EventCallback callback
-        );
         void resetTimerInterval(int fd, std::chrono::milliseconds interval);
     };
 
