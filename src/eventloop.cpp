@@ -17,9 +17,11 @@
 
 namespace miniruntime {
 
+    // itimerspec conversion helpers.
     constexpr int MILLI_DIVIDER = 1000;
     constexpr int NANO_DIVIDER = 1000000;
 
+    // Per-fd state kept in the event registry.
     struct Event {
         int fd;
         uint32_t epollFlags;
@@ -27,12 +29,14 @@ namespace miniruntime {
         EventLoop::EventCallback callback;
     };
 
+    // Pimpl implementation of EventLoop.
     struct EventLoop::Impl {
         int epollFd{-1};
         std::atomic<bool> stop{false};
         std::mutex mutex;
         std::unordered_map<int, Event> events;
 
+        // Add the fd to epoll, or refresh its flags if already registered.
         void registerEvent(Event& event) {
             const auto fd = event.fd;
 
@@ -42,6 +46,7 @@ namespace miniruntime {
 
             if (epoll_ctl(epollFd, EPOLL_CTL_ADD, fd, &ev) == -1) {
                 if (errno == EEXIST) {
+                    // fd already registered (e.g. re-created handle) -> MOD.
                     if (epoll_ctl(epollFd, EPOLL_CTL_MOD, fd, &ev) == -1) {
                         LOG_ERROR("epol_ctl mod failed, fd={}", fd);
                         throw std::runtime_error("epol_ctl mod failed");
@@ -83,6 +88,7 @@ namespace miniruntime {
     EventLoop::~EventLoop() 
     {
         stop();
+        // Deregister remaining fds.
         for (auto& [fd, event] : m_impl->events) {
             epoll_ctl(m_impl->epollFd, EPOLL_CTL_DEL, fd, nullptr);
         }
@@ -108,6 +114,7 @@ namespace miniruntime {
         if (fd < 0)
             throw std::runtime_error("eventfd error");
 
+        // Read the eventfd so the trigger can fire again on the EventLoop iteration.
         Event event = m_impl->prepareEvent(fd, EPOLLIN, EventType::TRIGGER,
             [cb = std::move(callback)](int fd) {
                 uint64_t val;
@@ -130,12 +137,14 @@ namespace miniruntime {
         if (fd < 0)
             throw std::runtime_error("timerfd error");
 
+        // One-shot: only it_value is armed, no it_interval.
         struct itimerspec spec{};
         spec.it_value.tv_sec = timeoutMs / MILLI_DIVIDER;
         spec.it_value.tv_nsec = (timeoutMs % MILLI_DIVIDER) / NANO_DIVIDER;
 
         TimerHandle timer{this, fd};
 
+        // Flag the handle as fired.
         Event event = m_impl->prepareEvent(fd, EPOLLIN, EventType::TIMER,
             [fired = timer.m_fired, cb = std::move(callback)](int fd) {
                 uint64_t val;
@@ -160,6 +169,7 @@ namespace miniruntime {
         if (fd < 0)
             throw std::runtime_error("timerfd error");
 
+        // Interval: it_value and it_interval are armed.
         struct itimerspec spec{};
         spec.it_value.tv_sec = intervalMs / MILLI_DIVIDER;
         spec.it_value.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
@@ -184,6 +194,7 @@ namespace miniruntime {
     {
         LOG_INFO("EventLoop started");
 
+        // Timeout keeps the loop responsive to stop() without incoming events.
         constexpr int EPOLL_TIMEOUT = 100;
         std::array<epoll_event, 64> events;
 
@@ -193,6 +204,7 @@ namespace miniruntime {
                 const char* errorStr = strerror(errno);
                 LOG_ERROR("epoll_wait failed: {}", errorStr);
 
+                // Signal interrupted the wait; just retry.
                 if (errno == EINTR) {
                     continue;
                 }
@@ -203,6 +215,8 @@ namespace miniruntime {
                 const auto fd = events[i].data.fd;
                 EventCallback cb;
                 {
+                    // Copy the callback under the lock, invoke it outside it,
+                    // so long callbacks do not block registrations.
                     std::lock_guard<std::mutex> lock(m_impl->mutex);
                     auto it = m_impl->events.find(fd);
                     if (it == m_impl->events.end())
@@ -222,12 +236,14 @@ namespace miniruntime {
         m_impl->stop.store(true, std::memory_order_release);
     }
 
+    // Delegating wrapper for HandleBase and the handle classes.
     void EventLoop::unregisterEvent(int fd)
     {
         LOG_DEBUG("EventLoop::unregisterEvent: fd={}", fd);
 
         std::lock_guard lock(m_impl->mutex);
         if (epoll_ctl(m_impl->epollFd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
+            // ENOENT means the fd was already gone; not an error.
             if (errno != ENOENT) {
                 LOG_WARNING("epoll_ctl del failed, fd={}", fd);
             }
@@ -235,6 +251,7 @@ namespace miniruntime {
         m_impl->events.erase(fd);
     }
 
+    // Delegating wrapper for IntervalHandle::resetInterval.
     void EventLoop::resetTimerInterval(int fd, std::chrono::milliseconds interval)
     {
         const auto intervalMs = interval.count();
