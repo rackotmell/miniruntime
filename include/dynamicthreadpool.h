@@ -3,44 +3,47 @@
 #include <chrono>
 #include <cstddef>
 #include <functional>
-#include <mutex>
-#include <stop_token>
+#include <memory>
 #include <thread>
-#include <vector>
 
-#include "boundedblockingqueue.h"
+namespace miniruntime
+{
 
-namespace miniruntime {
+/**
+ * @brief Thread pool with automatic size adjustment.
+ *
+ * DynamicThreadPool runs tasks from a bounded blocking queue on a set of
+ * worker threads. The pool starts with minPoolSize workers, grows while
+ * the queue is overloaded (up to maxPoolSize), and shrinks when a worker
+ * sits idle for idleTimeout.
+ */
+class DynamicThreadPool
+{
+public:
+    using Task = std::function<void()>;
 
-    class DynamicThreadPool {
-    public:
-        using Task = std::function<void()>;
+    /**
+     * @brief Constructs the pool and spawns the initial workers.
+     * @param minPoolSize Number of workers kept alive regardless of load.
+     * @param maxPoolSize Upper bound for automatic scaling up.
+     * @param idleTimeout How long a worker idles before retiring itself.
+     * @param taskQueueSize Capacity of the internal task queue.
+     */
+    explicit DynamicThreadPool(size_t minPoolSize = std::thread::hardware_concurrency(),
+                               size_t maxPoolSize = std::thread::hardware_concurrency() * 2,
+                               std::chrono::milliseconds idleTimeout = std::chrono::seconds(30),
+                               size_t taskQueueSize = 1000);
+    ~DynamicThreadPool();
 
-        explicit DynamicThreadPool(
-            size_t minPoolSize = std::thread::hardware_concurrency(),
-            size_t maxPoolSize = std::thread::hardware_concurrency() * 2,
-            std::chrono::milliseconds idleTimeout = std::chrono::seconds(30),
-            size_t taskQueueSize = 1000
-        );
-        ~DynamicThreadPool();
+    /**
+     * @brief Enqueue a task for execution; may block if the queue is full.
+     * @param task Callable to run on one of the pool threads.
+     */
+    void enqueue(Task task);
 
-        void enqueue(Task task); 
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_iml;
+};
 
-    private:
-        std::vector<std::jthread> m_threads;
-        BoundedBlockingQueue<Task> m_taskQueue;
-        std::jthread m_zombie;
-
-        const std::chrono::milliseconds m_idleTimeout;
-        const size_t m_minPoolSize;
-        const size_t m_maxPoolSize;
-
-        std::timed_mutex m_mutex;
-
-        void worker(std::stop_token stopToken);
-        void createNThreads(size_t n);
-        void adjustSize();
-
-    };
-
-}
+} // namespace miniruntime
