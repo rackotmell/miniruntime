@@ -1,143 +1,122 @@
 #pragma once
 
-#include <chrono>
 #include <format>
-#include <ostream>
-#include <iostream>
+#include <memory>
 #include <source_location>
+#include <sstream>
+#include <string>
 #include <string_view>
 #include <thread>
 
-#include "boundedblockingqueue.h"
-
-template<>
-struct std::formatter<std::thread::id, char> : std::formatter<unsigned long long, char> {
-    auto format(std::thread::id id, format_context& ctx) const {
-        return std::formatter<unsigned long long, char>::format(
-            std::hash<std::thread::id>{}(id), ctx);
+// Makes std::thread::id printable via std::format, e.g. "Thread-123".
+template <> struct std::formatter<std::thread::id> : std::formatter<std::string_view> {
+    auto format(const std::thread::id& id, std::format_context& ctx) const
+    {
+        std::ostringstream os;
+        os << "Thread-" << id;
+        return std::formatter<std::string_view>::format(os.str(), ctx);
     }
 };
 
-namespace miniruntime {
+namespace miniruntime
+{
 
-    enum class LogLevel {
-        Debug,
-        Info,
-        Warning,
-        Error
-    };
+/// Severity of a log message; lower values are more verbose.
+enum class LogLevel { Debug, Info, Warning, Error };
 
-    class Logger {
-    public:
-        static Logger& getInstance() {
-            static Logger instance;
-            return instance;
+/**
+ * @brief Asynchronous logger singleton.
+ *
+ * Logger accepts messages from any thread, formats them on the caller and
+ * offloads the actual writing to a dedicated worker thread through a bounded
+ * queue. This keeps logging latency off the hot path. Access is via the
+ * getInstance() singleton; the LOG_* macros capture the source location
+ * automatically.
+ */
+class Logger
+{
+public:
+    /**
+     * @brief Returns the logger instance.
+     * @return Reference to the singleton logger.
+     */
+    static Logger& getInstance()
+    {
+        static Logger instance;
+        return instance;
+    }
+    ~Logger();
+
+    /**
+     * @brief Formats and enqueues a log message.
+     * @param level    Log level of the message.
+     * @param location Call-site source location (filled by the macros).
+     * @param format   format string for std::format.
+     * @param args     Format arguments.
+     */
+    template <typename... Args>
+    void log(LogLevel level, std::source_location location, std::string_view format, Args&&... args)
+    {
+        if (level < minLevel()) return;
+
+        std::string formattedMessage;
+        try {
+            formattedMessage =
+                std::vformat(format, std::make_format_args(std::forward<Args>(args)...));
+        } catch (std::format_error& e) {
+            // Never let a bad format string break the caller.
+            formattedMessage = std::string("[Format error] ") + e.what();
         }
+        enqueue(level, location, std::move(formattedMessage));
+    }
 
-        ~Logger() {
-            shutdown();
-        }
+    /**
+     * @brief Sets the minimum level; messages below it are dropped.
+     * @param level New minimum level.
+     */
+    void setMinLevel(LogLevel level);
 
-        template<typename ...Args>
-        void log(
-            LogLevel level,
-            std::source_location location,
-            std::string_view format,
-            Args&& ...args
-        ) {
-            if (level < m_minLevel)
-                return;
+    /**
+     * @brief Redirects all output to the given stream.
+     * @param os Target stream (must outlive the logger).
+     */
+    void setOutput(std::ostream& os);
 
-            std::string formattedMessage;
-            try {
-                formattedMessage = std::vformat(format, std::make_format_args(std::forward<Args>(args)...));
-            } catch (std::format_error& e) {
-                formattedMessage = std::string("[Format error] ") + e.what();
-            }
+    /**
+     * @brief Blocks briefly to let pending messages drain.
+     */
+    void flush();
 
-            m_queue.push(LogMessage{
-                .timestamp = std::chrono::system_clock::now(),
-                .level = level,
-                .message = formattedMessage,
-                .source = location,
-            });
-        }
+    /**
+     * @brief Closes the queue and joins the worker thread.
+     */
+    void shutdown();
 
-        void setMinLevel(LogLevel level) { m_minLevel = level; }
-        void setOutput(std::ostream& os) { m_output = &os; }
-        void flush() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        void shutdown() {
-            m_queue.close();
-            if (m_thread.joinable())
-                m_thread.join();
-        }
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
 
-    private:
-        struct LogMessage {
-            std::chrono::system_clock::time_point timestamp;
-            LogLevel level;
-            std::string message;
-            std::source_location source;
-        };
+    // Private: only getInstance() may construct the singleton.
+    Logger();
 
-        Logger() : m_minLevel(LogLevel::Debug)
-            , m_output(&std::cout)
-            , m_queue(1000)
-            , m_thread([this](){
-                worker();
-            })
-        {}
+    void enqueue(LogLevel level, std::source_location location, std::string message);
+    LogLevel minLevel();
+};
 
-        void worker() {
-            while (auto message = m_queue.pop()) {
-                writeMessage(message.value());
-            }
-        }
+// Convenience macros: capture the source location and route to the singleton.
+#define LOG_DEBUG(format, ...)                                                                     \
+    miniruntime::Logger::getInstance().log(                                                        \
+        miniruntime::LogLevel::Debug, std::source_location::current(), format, ##__VA_ARGS__)
 
-        void writeMessage(const LogMessage& message) {
-            *m_output << std::format(
-                "[{0:%F} {0:%T}] [{1:}] [{2:}:{3:}] {4:}\n",
-                message.timestamp,
-                levelToString(message.level),
-                message.source.file_name(),
-                message.source.line(),
-                message.message
-            ) << std::flush;
-        }
+#define LOG_INFO(format, ...)                                                                      \
+    miniruntime::Logger::getInstance().log(                                                        \
+        miniruntime::LogLevel::Info, std::source_location::current(), format, ##__VA_ARGS__)
 
-        std::string_view levelToString(LogLevel level) {
-            using namespace std::string_view_literals;
+#define LOG_WARNING(format, ...)                                                                   \
+    miniruntime::Logger::getInstance().log(                                                        \
+        miniruntime::LogLevel::Warning, std::source_location::current(), format, ##__VA_ARGS__)
 
-            switch (level) {
-            case LogLevel::Debug: return "DEBUG"sv;
-            case LogLevel::Info: return "INFO"sv;
-            case LogLevel::Warning: return "WARNING"sv;
-            case LogLevel::Error: return "ERROR"sv;
-            default: return "UNKNOWN"sv;
-            }
-        } 
-
-        LogLevel m_minLevel;
-        std::ostream* m_output;
-        BoundedBlockingQueue<LogMessage> m_queue;
-        std::thread m_thread;
-    };
-
-    #define LOG_DEBUG(format, ...) \
-        miniruntime::Logger::getInstance().log( \
-            miniruntime::LogLevel::Debug, std::source_location::current(), format, ##__VA_ARGS__)
-
-    #define LOG_INFO(format, ...) \
-        miniruntime::Logger::getInstance().log( \
-            miniruntime::LogLevel::Info, std::source_location::current(), format, ##__VA_ARGS__)
-
-    #define LOG_WARNING(format, ...) \
-        miniruntime::Logger::getInstance().log( \
-            miniruntime::LogLevel::Warning, std::source_location::current(), format, ##__VA_ARGS__)
-
-    #define LOG_ERROR(format, ...) \
-        miniruntime::Logger::getInstance().log( \
-            miniruntime::LogLevel::Error, std::source_location::current(), format, ##__VA_ARGS__)
-}
+#define LOG_ERROR(format, ...)                                                                     \
+    miniruntime::Logger::getInstance().log(                                                        \
+        miniruntime::LogLevel::Error, std::source_location::current(), format, ##__VA_ARGS__)
+} // namespace miniruntime

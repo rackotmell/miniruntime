@@ -4,6 +4,7 @@ add_executable(${PROJECT_NAME}
     handle.cpp
     dynamicthreadpool.cpp
     taskscheduler.cpp
+    logger.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
