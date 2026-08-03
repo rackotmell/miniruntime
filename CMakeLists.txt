@@ -5,6 +5,7 @@ project(miniruntime VERSION 0.1.0 LANGUAGES CXX DESCRIPTION "Mini async task run
 option(ENABLE_ASAN_UBSAN "Build with ASAN+UBSAN sanitizers" OFF)
 option(ENABLE_TSAN "Build with TSAN sanitizer" OFF)
 option(BUILD_EXAMPLES "Build with examples" ON)
+option(BUILD_TESTS "Build tests with GoogleTest framework" ON)
 
 add_library(sanitizers_options INTERFACE)
 
@@ -23,6 +24,10 @@ add_subdirectory(src)
 
 if(BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+if(BUILD_TESTS)
+    add_subdirectory(tests)
 endif()
 
 
