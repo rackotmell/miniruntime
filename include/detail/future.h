@@ -14,7 +14,7 @@
 #include <type_traits>
 #include <variant>
 
-#include "logger.h"
+#include "../logger.h"
 
 namespace miniruntime::detail
 {
