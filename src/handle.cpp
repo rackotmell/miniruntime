@@ -63,7 +63,7 @@ TriggerHandle::TriggerHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, tru
 void TriggerHandle::trigger() const
 {
     if (!valid()) {
-        LOG_WARNING("TriggerHandle::trigger called trigger of invalid handle");
+        LOG_WARNING("TriggerHandle::trigger on invalid handle");
         return;
     }
     LOG_DEBUG("TriggerHandle::trigger on fd={}", m_impl->fd);
@@ -82,7 +82,11 @@ TimerHandle::TimerHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, true)
 
 void TimerHandle::cancel()
 {
-    LOG_DEBUG("TimerHandle::cancel on fd={}", m_impl->fd);
+    if (valid())
+        LOG_DEBUG("TimerHandle::cancel on fd={}", m_impl->fd);
+    else
+        LOG_WARNING("TimerHandle::cancel on invalid handle");
+
     release();
 }
 
@@ -95,14 +99,18 @@ IntervalHandle::IntervalHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, t
 
 void IntervalHandle::cancel()
 {
-    LOG_DEBUG("IntervalHandle::cancel on fd={}", m_impl->fd);
+    if (valid())
+        LOG_DEBUG("IntervalHandle::cancel on fd={}", m_impl->fd);
+    else
+        LOG_WARNING("IntervalHandle::cancel on invalid handle");
+    
     release();
 }
 
 void IntervalHandle::resetInterval(std::chrono::milliseconds interval)
 {
     if (!valid()) {
-        LOG_WARNING("IntervalHandle::resetInterval called interval reset of invalid handle");
+        LOG_WARNING("IntervalHandle::resetInterval on invalid handle");
         return;
     }
 
