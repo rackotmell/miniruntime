@@ -14,7 +14,7 @@ target_include_directories(${LIB_NAME} PUBLIC
 )
 
 target_compile_definitions(${LIB_NAME} PRIVATE cxx_std_20)
-target_compile_options(${LIB_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_compile_options(${LIB_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror -std=gnu++20)
 
 find_package(Threads REQUIRED)
 target_link_libraries(${LIB_NAME} PUBLIC Threads::Threads)

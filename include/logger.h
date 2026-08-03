@@ -55,14 +55,15 @@ public:
      * @param args     Format arguments.
      */
     template <typename... Args>
-    void log(LogLevel level, std::source_location location, std::string_view format, Args&&... args)
+    void log(LogLevel level, std::source_location location, std::string_view format, Args... args)
     {
         if (level < minLevel()) return;
 
         std::string formattedMessage;
         try {
-            formattedMessage =
-                std::vformat(format, std::make_format_args(std::forward<Args>(args)...));
+            // Args by value: make_format_args requires lvalues, so rvalues
+            // like literals or temporaries must be copied into the frame first.
+            formattedMessage = std::vformat(format, std::make_format_args(args...));
         } catch (std::format_error& e) {
             // Never let a bad format string break the caller.
             formattedMessage = std::string("[Format error] ") + e.what();

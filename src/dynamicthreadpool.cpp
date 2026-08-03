@@ -97,9 +97,8 @@ struct DynamicThreadPool::Impl {
         const auto taskCount = taskQueue.size();
 
         if (taskCount > 2 * threadCount && threadCount < maxPoolSize) {
-            const auto newThreadsCount = threadCount + 1;
             LOG_INFO("DynamicThreadPool scaling up: new threads count={} (previous={})",
-                     newThreadsCount,
+                     threadCount + 1,
                      threadCount);
 
             createNThreads(1);
@@ -113,11 +112,10 @@ DynamicThreadPool::DynamicThreadPool(size_t minPoolSize,
                                      size_t taskQueueSize)
     : m_iml(std::make_unique<Impl>(minPoolSize, maxPoolSize, idleTimeout, taskQueueSize))
 {
-    const auto idleMs = idleTimeout.count();
     LOG_DEBUG("DynamicThreadPool created: min={}, max={}, idleTimeout={}ms, queueSize={}",
               minPoolSize,
               maxPoolSize,
-              idleMs,
+              idleTimeout.count(),
               taskQueueSize);
 
     m_iml->threads.reserve(maxPoolSize);

@@ -55,8 +55,7 @@ struct EventLoop::Impl {
                 }
                 LOG_DEBUG("EventLoop::registerEvent event re-registered, fd={}", fd);
             } else {
-                const char* errorStr = strerror(errno);
-                LOG_ERROR("epoll_ctl failed: {}", errorStr);
+                LOG_ERROR("epoll_ctl failed: {}", strerror(errno));
                 throw std::runtime_error("epoll_ctl failed");
             }
         }
@@ -66,6 +65,14 @@ struct EventLoop::Impl {
     Event prepareEvent(const int fd, uint32_t epollFlags, EventType type, EventCallback callback)
     {
         return {.fd = fd, .epollFlags = epollFlags, .type = type, .callback = std::move(callback)};
+    }
+
+    void prepareIntervalSpec(itimerspec& spec, int64_t ms)
+    {
+        spec.it_value.tv_sec = ms / MILLI_DIVIDER;
+        spec.it_value.tv_nsec = (ms % MILLI_DIVIDER) * NANO_DIVIDER;
+        spec.it_interval.tv_sec = ms / MILLI_DIVIDER;
+        spec.it_interval.tv_nsec = (ms % MILLI_DIVIDER) * NANO_DIVIDER;
     }
 };
 
@@ -132,18 +139,21 @@ TimerHandle EventLoop::createTimer(std::chrono::milliseconds timeout, TimerCallb
     // One-shot: only it_value is armed, no it_interval.
     struct itimerspec spec{};
     spec.it_value.tv_sec = timeoutMs / MILLI_DIVIDER;
-    spec.it_value.tv_nsec = (timeoutMs % MILLI_DIVIDER) / NANO_DIVIDER;
+    spec.it_value.tv_nsec = (timeoutMs % MILLI_DIVIDER) * NANO_DIVIDER;
 
     TimerHandle timer{this, fd};
 
     // Flag the handle as fired.
-    Event event = m_impl->prepareEvent(
-        fd, EPOLLIN, EventType::TIMER, [fired = timer.firedAccess(), cb = std::move(callback)](int fd) {
-            uint64_t val;
-            read(fd, &val, sizeof(val));
-            if (cb) cb();
-            fired->store(true, std::memory_order_release);
-        });
+    Event event =
+        m_impl->prepareEvent(fd,
+                             EPOLLIN,
+                             EventType::TIMER,
+                             [fired = timer.firedAccess(), cb = std::move(callback)](int fd) {
+                                 uint64_t val;
+                                 read(fd, &val, sizeof(val));
+                                 if (cb) cb();
+                                 fired->store(true, std::memory_order_release);
+                             });
 
     std::lock_guard lock(m_impl->mutex);
     timerfd_settime(fd, 0, &spec, nullptr);
@@ -162,10 +172,7 @@ IntervalHandle EventLoop::createInterval(std::chrono::milliseconds interval, Tim
 
     // Interval: it_value and it_interval are armed.
     struct itimerspec spec{};
-    spec.it_value.tv_sec = intervalMs / MILLI_DIVIDER;
-    spec.it_value.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
-    spec.it_interval.tv_sec = intervalMs / MILLI_DIVIDER;
-    spec.it_interval.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
+    m_impl->prepareIntervalSpec(spec, intervalMs);
 
     Event event =
         m_impl->prepareEvent(fd, EPOLLIN, EventType::TIMER, [cb = std::move(callback)](int fd) {
@@ -192,8 +199,7 @@ void EventLoop::run()
     while (!m_impl->stop.load(std::memory_order_acquire)) {
         int n = epoll_wait(m_impl->epollFd, events.data(), events.size(), EPOLL_TIMEOUT);
         if (n < 0) {
-            const char* errorStr = strerror(errno);
-            LOG_ERROR("epoll_wait failed: {}", errorStr);
+            LOG_ERROR("epoll_wait failed: {}", strerror(errno));
 
             // Signal interrupted the wait; just retry.
             if (errno == EINTR) {
@@ -248,11 +254,7 @@ void EventLoop::resetTimerInterval(int fd, std::chrono::milliseconds interval)
     LOG_DEBUG("Reset timer interval: fd={}, interval={}ms", fd, intervalMs);
 
     struct itimerspec spec{};
-
-    spec.it_value.tv_sec = intervalMs / MILLI_DIVIDER;
-    spec.it_value.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
-    spec.it_interval.tv_sec = intervalMs / MILLI_DIVIDER;
-    spec.it_interval.tv_nsec = (intervalMs % MILLI_DIVIDER) / NANO_DIVIDER;
+    m_impl->prepareIntervalSpec(spec, intervalMs);
 
     std::lock_guard lock(m_impl->mutex);
     timerfd_settime(fd, 0, &spec, nullptr);
