@@ -56,7 +56,7 @@ public:
     std::optional<T> wait()
     {
         std::unique_lock lock(m_mutex);
-        m_cv.wait(lock, [this] { return m_value.has_value() || m_closed; });
+        m_cv.wait(lock, [this] { return m_value.has_value() || m_exception || m_closed; });
         if (m_closed) return std::nullopt;
         if (m_exception) std::rethrow_exception(m_exception);
 
