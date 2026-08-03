@@ -33,16 +33,10 @@ public:
      * @param value Element to enqueue.
      * @return true on success, false if the queue was closed while waiting.
      */
-    bool push(T value)
+    template<typename U>
+    bool push(U&& value)
     {
-        {
-            std::unique_lock<std::mutex> lock(m_mutex);
-            m_notFullCv.wait(lock, [this] { return m_deque.size() < m_dequeMaxSize || m_closed; });
-            if (m_closed) return false;
-            m_deque.push_back(value);
-        }
-        m_notEmptyCv.notify_one();
-        return true;
+        return emplace(std::forward<T>(value));
     }
 
     /**
