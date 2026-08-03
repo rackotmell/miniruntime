@@ -84,7 +84,10 @@ public:
     void setOutput(std::ostream& os);
 
     /**
-     * @brief Blocks briefly to let pending messages drain.
+     * @brief Blocks until every message enqueued before the call is written.
+     *
+     * After flush() returns, the destination stream may safely be read or
+     * destroyed: all writes to it complete before the return.
      */
     void flush();
 

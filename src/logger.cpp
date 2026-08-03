@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <format>
 #include <iostream>
 #include <memory>
@@ -23,12 +24,19 @@ struct Logger::Impl {
     std::atomic<LogLevel> minLevel{LogLevel::Debug};
     std::atomic<std::ostream*> output{&std::cout};
     BoundedBlockingQueue<LogMessage> queue{1000};
+
+    // Monotonic counters; flush() waits until every message enqueued before
+    // its snapshot has been written out by the worker thread.
+    std::atomic<size_t> enqueued{0};
+    std::atomic<size_t> processed{0};
     std::thread thread{[this] { worker(); }};
 
     void worker()
     {
         while (auto message = queue.pop()) {
             writeMessage(message.value());
+            processed.fetch_add(1, std::memory_order_release);
+            processed.notify_all();
         }
     }
 
@@ -76,8 +84,14 @@ void Logger::setMinLevel(LogLevel level)
 
 void Logger::setOutput(std::ostream& os) { m_impl->output.store(&os, std::memory_order_release); }
 
-// Simple heuristic drain: give the writer a moment to empty the queue.
-void Logger::flush() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); }
+// Blocks until every message enqueued before the call has been written out.
+void Logger::flush()
+{
+    const size_t target = m_impl->enqueued.load(std::memory_order_acquire);
+    while (m_impl->processed.load(std::memory_order_acquire) < target) {
+        m_impl->processed.wait(m_impl->processed.load(std::memory_order_relaxed));
+    }
+}
 
 void Logger::shutdown()
 {
@@ -90,12 +104,15 @@ LogLevel Logger::minLevel() { return m_impl->minLevel.load(std::memory_order_acq
 
 void Logger::enqueue(LogLevel level, std::source_location location, std::string message)
 {
-    m_impl->queue.push(LogMessage{
+    const auto pushed = m_impl->queue.push(LogMessage{
         .timestamp = std::chrono::system_clock::now(),
         .level = level,
         .message = message,
         .source = location,
     });
+    if (pushed) {
+        m_impl->enqueued.fetch_add(1, std::memory_order_release);
+    }
 }
 
 } // namespace miniruntime
