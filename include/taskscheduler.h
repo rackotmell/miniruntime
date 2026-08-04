@@ -49,7 +49,7 @@ public:
     template <typename F, typename... Args>
     auto execute(F&& f, Args&&... args) -> Future<std::invoke_result_t<F, Args...>>
     {
-        LOG_DEBUG("TaskScheduler::excecute called");
+        LOG_DEBUG("TaskScheduler::execute called");
 
         using ResultType = std::invoke_result_t<F, Args...>;
         auto promise = std::make_shared<Promise<ResultType>>();

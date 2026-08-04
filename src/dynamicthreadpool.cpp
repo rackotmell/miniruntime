@@ -110,7 +110,7 @@ DynamicThreadPool::DynamicThreadPool(size_t minPoolSize,
                                      size_t maxPoolSize,
                                      std::chrono::milliseconds idleTimeout,
                                      size_t taskQueueSize)
-    : m_iml(std::make_unique<Impl>(minPoolSize, maxPoolSize, idleTimeout, taskQueueSize))
+    : m_impl(std::make_unique<Impl>(minPoolSize, maxPoolSize, idleTimeout, taskQueueSize))
 {
     LOG_DEBUG("DynamicThreadPool created: min={}, max={}, idleTimeout={}ms, queueSize={}",
               minPoolSize,
@@ -118,23 +118,23 @@ DynamicThreadPool::DynamicThreadPool(size_t minPoolSize,
               idleTimeout.count(),
               taskQueueSize);
 
-    m_iml->threads.reserve(maxPoolSize);
-    m_iml->createNThreads(minPoolSize);
+    m_impl->threads.reserve(maxPoolSize);
+    m_impl->createNThreads(minPoolSize);
 }
 
 DynamicThreadPool::~DynamicThreadPool()
 {
     {
-        std::lock_guard lock(m_iml->mutex);
-        for (auto& thread : m_iml->threads) {
+        std::lock_guard lock(m_impl->mutex);
+        for (auto& thread : m_impl->threads) {
             thread.request_stop();
         }
     }
     // Wake up all workers blocked on the empty queue.
-    m_iml->taskQueue.close();
+    m_impl->taskQueue.close();
     {
-        std::lock_guard lock(m_iml->mutex);
-        for (auto& thread : m_iml->threads) {
+        std::lock_guard lock(m_impl->mutex);
+        for (auto& thread : m_impl->threads) {
             if (thread.joinable()) thread.join();
         }
     }
@@ -145,7 +145,7 @@ DynamicThreadPool::~DynamicThreadPool()
 void DynamicThreadPool::enqueue(Task task)
 {
     // Scale up if overloaded, then hand the task to the queue.
-    m_iml->adjustSize();
-    m_iml->taskQueue.push(std::move(task));
+    m_impl->adjustSize();
+    m_impl->taskQueue.push(std::move(task));
 }
 } // namespace miniruntime

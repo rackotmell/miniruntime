@@ -43,7 +43,7 @@ public:
 
 private:
     struct Impl;
-    std::unique_ptr<Impl> m_iml;
+    std::unique_ptr<Impl> m_impl;
 };
 
 } // namespace miniruntime

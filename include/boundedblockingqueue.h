@@ -36,7 +36,7 @@ public:
     template<typename U>
     bool push(U&& value)
     {
-        return emplace(std::forward<T>(value));
+        return emplace(std::forward<U>(value));
     }
 
     /**
