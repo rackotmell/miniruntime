@@ -13,7 +13,24 @@
 #include <sys/eventfd.h>
 #include <sys/time.h>
 #include <sys/timerfd.h>
+#include <sys/types.h>
 #include <unistd.h>
+
+namespace
+{
+
+void readFd(int fd)
+{
+    uint64_t val;
+    const ssize_t n = read(fd, &val, sizeof(val));
+    if (n != static_cast<ssize_t>(n))
+        LOG_WARNING("EventLoop read failed on fd={}: {}; this can lead to uncontrolled "
+                    "EventLoop awakenings.",
+                    fd,
+                    std::strerror(errno));
+}
+
+} // namespace
 
 namespace miniruntime
 {
@@ -92,7 +109,8 @@ EventLoop::~EventLoop()
     for (auto& [fd, event] : m_impl->events) {
         if (epoll_ctl(m_impl->epollFd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
             LOG_WARNING("EventLoop::~EventLoop epoll_ctl DEL failed for fd={}: {}",
-                        fd, std::strerror(errno));
+                        fd,
+                        std::strerror(errno));
         }
     }
     if (m_impl->epollFd >= 0) {
@@ -124,8 +142,7 @@ TriggerHandle EventLoop::createTrigger(TriggerCallback callback)
     // Read the eventfd so the trigger can fire again on the EventLoop iteration.
     Event event =
         m_impl->prepareEvent(fd, EPOLLIN, EventType::TRIGGER, [cb = std::move(callback)](int fd) {
-            uint64_t val;
-            read(fd, &val, sizeof(val));
+            readFd(fd);
             if (cb) cb();
         });
 
@@ -156,8 +173,7 @@ TimerHandle EventLoop::createTimer(std::chrono::milliseconds timeout, TimerCallb
                              EPOLLIN,
                              EventType::TIMER,
                              [fired = timer.firedAccess(), cb = std::move(callback)](int fd) {
-                                 uint64_t val;
-                                 read(fd, &val, sizeof(val));
+                                 readFd(fd);
                                  if (cb) cb();
                                  fired->store(true, std::memory_order_release);
                              });
@@ -183,8 +199,7 @@ IntervalHandle EventLoop::createInterval(std::chrono::milliseconds interval, Tim
 
     Event event =
         m_impl->prepareEvent(fd, EPOLLIN, EventType::TIMER, [cb = std::move(callback)](int fd) {
-            uint64_t val;
-            read(fd, &val, sizeof(val));
+            readFd(fd);
             if (cb) cb();
         });
 

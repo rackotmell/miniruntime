@@ -1,6 +1,7 @@
 #include "handle.h"
 
 #include <atomic>
+#include <cstring>
 #include <memory>
 #include <sys/timerfd.h>
 #include <sys/types.h>
@@ -68,9 +69,13 @@ void TriggerHandle::trigger() const
     }
     LOG_DEBUG("TriggerHandle::trigger on fd={}", m_impl->fd);
 
-    // Writing 1 to the eventfd makes the loop's epoll_wait return.
     uint64_t one = 1;
-    write(m_impl->fd, &one, sizeof(one));
+    // Writing 1 to the eventfd makes the loop's epoll_wait wake.
+    const ssize_t written = write(m_impl->fd, &one, sizeof(one));
+    if (written != static_cast<ssize_t>(sizeof(one))) {
+        LOG_WARNING(
+            "TriggerHandle::trigger write failed on fd={}: {}", m_impl->fd, std::strerror(errno));
+    }
 }
 
 TimerHandle::TimerHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, true)
@@ -103,7 +108,7 @@ void IntervalHandle::cancel()
         LOG_DEBUG("IntervalHandle::cancel on fd={}", m_impl->fd);
     else
         LOG_WARNING("IntervalHandle::cancel on invalid handle");
-    
+
     release();
 }
 
