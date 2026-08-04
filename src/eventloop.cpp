@@ -90,7 +90,14 @@ EventLoop::~EventLoop()
     stop();
     // Deregister remaining fds.
     for (auto& [fd, event] : m_impl->events) {
-        epoll_ctl(m_impl->epollFd, EPOLL_CTL_DEL, fd, nullptr);
+        if (epoll_ctl(m_impl->epollFd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
+            LOG_WARNING("EventLoop::~EventLoop epoll_ctl DEL failed for fd={}: {}",
+                        fd, std::strerror(errno));
+        }
+    }
+    if (m_impl->epollFd >= 0) {
+        close(m_impl->epollFd);
+        m_impl->epollFd = -1;
     }
 }
 

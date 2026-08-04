@@ -93,28 +93,24 @@ bool TaskScheduler::cancel(std::optional<uint64_t> id)
     if (!id) return false;
 
     std::function<void()> onCancel;
+    bool found = false;
     {
         std::lock_guard lock(m_impl->mutex);
         auto idValue = id.value();
-        auto timerIt = m_impl->timers.find(idValue);
-        if (timerIt != m_impl->timers.end()) {
+        if (auto it = m_impl->timers.find(idValue); it != m_impl->timers.end()) {
             LOG_DEBUG("TaskScheduler::cancel manualy cancel timer with id={}", idValue);
-            if (timerIt->second.onCancel) onCancel = timerIt->second.onCancel;
-            m_impl->timers.erase(timerIt);
-        } else {
-            auto intervalIt = m_impl->intervals.find(idValue);
-            if (intervalIt != m_impl->intervals.end()) {
-                LOG_DEBUG("TaskScheduler::cancel manualy cancel interval with id={}", idValue);
-                if (intervalIt->second.onCancel) onCancel = intervalIt->second.onCancel;
-                m_impl->intervals.erase(intervalIt);
-            }
+            onCancel = std::move(it->second.onCancel);
+            m_impl->timers.erase(it);
+            found = true;
+        } else if (auto it = m_impl->intervals.find(idValue); it != m_impl->intervals.end()) {
+            LOG_DEBUG("TaskScheduler::cancel manualy cancel interval with id={}", idValue);
+            onCancel = std::move(it->second.onCancel);
+            m_impl->intervals.erase(it);
+            found = true;
         }
     }
-    if (onCancel) {
-        onCancel();
-        return true;
-    }
-    return false;
+    if (found && onCancel) onCancel();
+    return found;
 }
 
 void TaskScheduler::enqueue(std::function<void()> task) { m_impl->pool.enqueue(std::move(task)); }

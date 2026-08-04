@@ -75,7 +75,7 @@ void TriggerHandle::trigger() const
 
 TimerHandle::TimerHandle(EventLoop* loop, int fd) : HandleBase(loop, fd, true)
 {
-    // The fired flag is shared with the loop so it could be setted
+    // The fired flag is shared with the loop so it can be set
     // from event-loop.
     m_impl->fired = std::make_shared<std::atomic<bool>>(false);
 }

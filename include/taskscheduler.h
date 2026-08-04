@@ -10,7 +10,8 @@
 #include "logger.h"
 #include "sharedvalue.h"
 
-namespace miniruntime {
+namespace miniruntime
+{
 
 /**
  * @brief High-level facade over the runtime components.
@@ -55,18 +56,14 @@ public:
 
         // Wrap the user callable and put it into thread pool.
         enqueue([promise, func = std::forward<F>(f), ... args = std::forward<Args>(args)] {
-            try
-            {
-                if constexpr (std::is_void_v<ResultType>)
-                {
+            try {
+                if constexpr (std::is_void_v<ResultType>) {
                     func(args...);
                     promise->setValue();
-                } else
-                {
+                } else {
                     promise->setValue(func(args...));
                 }
-            } catch (...)
-            {
+            } catch (...) {
                 promise->setException(std::current_exception());
             }
         });
@@ -79,6 +76,14 @@ public:
      * @param delay Delay before the task is dispatched to the thread pool.
      * @return Future holding the result (or the exception) once the task completes;
      * can be canceled by id before triggering.
+     *
+     * @note If the internal event-loop registration fails (for example, when
+     * the process runs out of file descriptors), the returned Future is
+     * closed (see Future::isClosed()) and an error is logged. The function
+     * itself does not throw in that case.
+     *
+     * @note If the user-provided callable throws, the exception is captured into
+     * the Future and re-thrown by Future::get().
      */
     template <typename F, typename... Args>
     auto schedule(std::chrono::milliseconds delay, F&& f, Args&&... args)
@@ -87,29 +92,30 @@ public:
         using ResultType = std::invoke_result_t<F, Args...>;
         auto promise = std::make_shared<Promise<ResultType>>();
 
-        // Register a one-shot timer.
-        uint64_t id = createTimer(
-            delay,
-            [promise, func = std::forward<F>(f), ... args = std::forward<Args>(args)] {
-                try
-                {
-                    if constexpr (std::is_void_v<ResultType>)
-                    {
-                        func(args...);
-                        promise->setValue();
-                    } else
-                    {
-                        promise->setValue(func(args...));
+        try {
+            // Register a one-shot timer.
+            uint64_t id = createTimer(
+                delay,
+                [promise, func = std::forward<F>(f), ... args = std::forward<Args>(args)] {
+                    try {
+                        if constexpr (std::is_void_v<ResultType>) {
+                            func(args...);
+                            promise->setValue();
+                        } else {
+                            promise->setValue(func(args...));
+                        }
+                    } catch (...) {
+                        promise->setException(std::current_exception());
                     }
-                } catch (...)
-                {
-                    promise->setException(std::current_exception());
-                }
-            },
-            [promise] { promise->close(); });
+                },
+                [promise] { promise->close(); });
 
-        promise->setId(id);
-        LOG_DEBUG("TaskScheduler:schedule task scheduled, id={}, delay={}", id, delay);
+            promise->setId(id);
+            LOG_DEBUG("TaskScheduler:schedule task scheduled, id={}, delay={}", id, delay);
+        } catch (std::exception& e) {
+            LOG_ERROR("TaskScheduler::schedule failed to register timer: {}", e.what());
+            promise->close();
+        }
 
         return promise->getFuture();
     }
@@ -118,6 +124,14 @@ public:
      * @brief Schedules a callable to run repeatedly at a fixed interval.
      * @param interval Period between consecutive runs.
      * @return SharedValue holding the latest result; cancel it by id to stop.
+     *
+     * @note If the internal event-loop registration fails (for example, when
+     * the process runs out of file descriptors), the returned Future is
+     * closed (see Future::isClosed()) and an error is logged. The function
+     * itself does not throw in that case.
+     *
+     * @note If the user-provided callable throws, the exception is captured into
+     * the Future and re-thrown by Future::get().
      */
     template <typename F, typename... Args>
     auto scheduleInterval(std::chrono::milliseconds interval, F&& f, Args&&... args)
@@ -126,30 +140,32 @@ public:
         using ResultType = std::invoke_result_t<F, Args...>;
         auto value = std::make_shared<SharedValue<ResultType>>();
 
-        // Register an interval timer.
-        uint64_t id = createInterval(
-            interval,
-            [valuePtr = value, func = std::forward<F>(f), ... args = std::forward<Args>(args)] {
-                try
-                {
-                    if constexpr (std::is_void_v<ResultType>)
-                    {
-                        func(args...);
-                        valuePtr->set();
-                    } else
-                    {
-                        valuePtr->set(func(args...));
+        try {
+            // Register an interval timer.
+            uint64_t id = createInterval(
+                interval,
+                [valuePtr = value, func = std::forward<F>(f), ... args = std::forward<Args>(args)] {
+                    try {
+                        if constexpr (std::is_void_v<ResultType>) {
+                            func(args...);
+                            valuePtr->set();
+                        } else {
+                            valuePtr->set(func(args...));
+                        }
+                    } catch (...) {
+                        valuePtr->setException(std::current_exception());
                     }
-                } catch (...)
-                {
-                    valuePtr->setException(std::current_exception());
-                }
-            },
-            [value] { value->close(); });
-        value->setId(id);
-        LOG_DEBUG("TaskScheduler::scheduleInterval interval task scheduled, id={}, interval={}",
-                  id,
-                  interval);
+                },
+                [value] { value->close(); });
+
+            value->setId(id);
+            LOG_DEBUG("TaskScheduler::scheduleInterval interval task scheduled, id={}, interval={}",
+                      id,
+                      interval);
+        } catch (std::exception& e) {
+            LOG_ERROR("TaskScheduler::scheduleInterval failed to register interval: {}", e.what());
+            value->close();
+        }
 
         return value;
     }
