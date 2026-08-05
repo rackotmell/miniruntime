@@ -10,6 +10,7 @@
 #include "dynamicthreadpool.h"
 #include "eventloop.h"
 #include "future.h"
+#include "michaelscottqueue.h"
 #include "taskscheduler.h"
 
 using namespace miniruntime;
@@ -152,6 +153,195 @@ TEST(LoadTest, QueueBackpressureWithFullCapacity)
 
     EXPECT_FALSE(failed.load());
     EXPECT_EQ(consumed.load(), count);
+}
+
+// ============================================================
+// MichaelScottQueue load
+// ============================================================
+
+TEST(LoadTest, LockFreeQueueManyProducersManyConsumers)
+{
+    constexpr int producersCount = 4;
+    constexpr int perProducer = 20000;
+    constexpr int consumersCount = 4;
+    MichaelScottQueue<int> queue;
+
+    std::vector<std::atomic<int>> seen(producersCount * perProducer);
+    for (auto& value : seen)
+        value.store(0);
+
+    std::atomic<bool> failed{false};
+
+    std::vector<std::thread> producers;
+    producers.reserve(producersCount);
+    for (int p = 0; p < producersCount; ++p) {
+        producers.emplace_back([&queue, &failed, p] {
+            for (int i = 0; i < perProducer; ++i) {
+                if (!queue.push(p * perProducer + i)) {
+                    failed.store(true);
+                    return;
+                }
+            }
+        });
+    }
+
+    std::vector<std::thread> consumers;
+    consumers.reserve(consumersCount);
+    for (int c = 0; c < consumersCount; ++c) {
+        consumers.emplace_back([&queue, &seen, &failed] {
+            while (auto value = queue.pop()) {
+                const int v = value.value();
+                if (v < 0 || v >= static_cast<int>(seen.size())) {
+                    failed.store(true);
+                    continue;
+                }
+                seen[v].fetch_add(1);
+            }
+        });
+    }
+
+    for (auto& thread : producers)
+        thread.join();
+    queue.close();
+    for (auto& thread : consumers)
+        thread.join();
+
+    EXPECT_FALSE(failed.load());
+    for (const auto& value : seen) {
+        EXPECT_EQ(value.load(), 1);
+    }
+}
+
+TEST(LoadTest, LockFreeQueueHighContention)
+{
+    constexpr int producersCount = 4;
+    constexpr int perProducer = 20000;
+    constexpr int consumersCount = 4;
+
+    MichaelScottQueue<int> queue;
+    std::atomic<int> consumed{0};
+
+    std::vector<std::thread> producers;
+    producers.reserve(producersCount);
+
+    for (int p = 0; p < producersCount; ++p) {
+        producers.emplace_back([&queue, p] {
+            for (int i = 0; i < perProducer; ++i)
+                queue.push(p * perProducer + i);
+        });
+    }
+
+    std::vector<std::thread> consumers;
+    consumers.reserve(consumersCount);
+    for (int c = 0; c < consumersCount; ++c) {
+        consumers.emplace_back([&queue, &consumed] {
+            while (auto val = queue.pop()) {
+                consumed.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+    }
+
+    for (auto& thread : producers)
+        thread.join();
+    queue.close();
+    for (auto& thread : consumers)
+        thread.join();
+
+
+    EXPECT_EQ(consumed.load(), producersCount * perProducer);
+}
+
+TEST(LoadTest, LockFreeQueueBurstProducerThenDrain)
+{
+    constexpr uint64_t count = 100000;
+    MichaelScottQueue<int> queue;
+
+    for (uint64_t i = 0; i < count; ++i)
+        queue.push(i);
+
+    std::atomic<uint64_t> sum{0};
+    std::thread consumer([&] {
+        while (auto val = queue.pop())
+            sum.fetch_add(val.value(), std::memory_order_relaxed);
+    });
+
+    queue.close();
+    consumer.join();
+
+    EXPECT_EQ(sum.load(), static_cast<long long>(count) * (count - 1) / 2);
+}
+
+TEST(LoadTest, LockFreeQueueVsBoundedBlockingQueue)
+{
+    constexpr int producersCount = 20;
+    constexpr int perProducer = 50000;
+    constexpr int consumersCount = 20;
+    constexpr int total = producersCount * perProducer;
+
+    auto runWithQueue = [&](auto& queue) {
+        std::vector<std::atomic<int>> seen(total);
+        for (auto& value : seen)
+            value.store(0);
+
+        std::atomic<bool> failed{false};
+
+        auto start = std::chrono::steady_clock::now();
+
+        std::vector<std::thread> producers;
+        producers.reserve(producersCount);
+        for (int p = 0; p < producersCount; ++p) {
+            producers.emplace_back([&queue, &failed, p] {
+                for (int i = 0; i < perProducer; ++i) {
+                    if (!queue.push(p * perProducer + i)) {
+                        failed.store(true);
+                        return;
+                    }
+                }
+            });
+        }
+
+        std::vector<std::thread> consumers;
+        consumers.reserve(consumersCount);
+        for (int c = 0; c < consumersCount; ++c) {
+            consumers.emplace_back([&queue, &seen, &failed] {
+                while (auto value = queue.pop()) {
+                    const int v = value.value();
+                    if (v < 0 || v >= static_cast<int>(seen.size())) {
+                        failed.store(true);
+                        continue;
+                    }
+                    seen[v].fetch_add(1);
+                }
+            });
+        }
+
+        for (auto& thread : producers)
+            thread.join();
+        queue.close();
+        for (auto& thread : consumers)
+            thread.join();
+
+        auto elapsed = std::chrono::steady_clock::now() - start;
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+
+        EXPECT_FALSE(failed.load());
+        for (const auto& value : seen)
+            EXPECT_EQ(value.load(), 1);
+
+        return ms;
+    };
+
+    BoundedBlockingQueue<int> bbq(64);
+    auto bbqMs = runWithQueue(bbq);
+
+    MichaelScottQueue<int> msq;
+    auto msqMs = runWithQueue(msq);
+
+    std::cout << "Michael-Scott queue ms: " << msqMs << "\n";
+    std::cout << "Bounded blocked queue ms: " << bbqMs << "\n";
+
+    EXPECT_GT(bbqMs, 0);
+    EXPECT_GT(msqMs, 0);
 }
 
 // ============================================================

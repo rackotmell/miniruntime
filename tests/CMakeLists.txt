@@ -16,6 +16,7 @@ set(TESTS
     futuretest
     loadtest
     loggertest
+    michaelscottqueuetest
     sharedvaluetest
     taskschedulertest
     templatecompatibilitytest

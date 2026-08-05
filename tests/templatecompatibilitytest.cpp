@@ -6,6 +6,7 @@
 
 #include "boundedblockingqueue.h"
 #include "future.h"
+#include "michaelscottqueue.h"
 #include "sharedvalue.h"
 
 //================================================
@@ -116,6 +117,65 @@ TYPED_TEST(QueueTypeTest, TimeoutPopAcrossTypes)
     EXPECT_EQ(val.value(), makeValue<TypeParam>());
 
     EXPECT_FALSE(queue.timeoutPop(std::chrono::milliseconds(10)).has_value());
+}
+
+// ================================================
+// MichaelScottQueue type tests
+// ================================================
+
+template <typename T> class MichaelScottQueueTypeTest : public testing::Test
+{
+};
+
+using MichaelScottQueueValueTypes = testing::Types<int, std::string, Point, MoveOnly, NoDefault>;
+
+TYPED_TEST_SUITE(MichaelScottQueueTypeTest, MichaelScottQueueValueTypes);
+
+TYPED_TEST(MichaelScottQueueTypeTest, PushPopAcrossTypes)
+{
+    MichaelScottQueue<TypeParam> queue;
+
+    queue.push(makeValue<TypeParam>());
+    EXPECT_EQ(queue.size(), 1);
+
+    auto val = queue.pop();
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), makeValue<TypeParam>());
+}
+
+TYPED_TEST(MichaelScottQueueTypeTest, CloseAcrossTypes)
+{
+    MichaelScottQueue<TypeParam> queue;
+
+    queue.push(makeValue<TypeParam>());
+    ASSERT_EQ(queue.size(), 1);
+
+    queue.close();
+
+    ASSERT_TRUE(queue.pop().has_value());
+    EXPECT_FALSE(queue.pop().has_value());
+}
+
+TYPED_TEST(MichaelScottQueueTypeTest, TimeoutPopAcrossTypes)
+{
+    MichaelScottQueue<TypeParam> queue;
+
+    queue.push(makeValue<TypeParam>());
+    auto val = queue.timeoutPop(std::chrono::milliseconds(30));
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), makeValue<TypeParam>());
+
+    EXPECT_FALSE(queue.timeoutPop(std::chrono::milliseconds(10)).has_value());
+}
+
+TYPED_TEST(MichaelScottQueueTypeTest, EmplaceAcrossTypes)
+{
+    MichaelScottQueue<TypeParam> queue;
+
+    queue.emplace(makeValue<TypeParam>());
+    auto val = queue.pop();
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), makeValue<TypeParam>());
 }
 
 // ================================================
