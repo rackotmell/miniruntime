@@ -345,12 +345,26 @@ TEST(LoadTest, LockFreeQueueVsBoundedBlockingQueue)
 }
 
 // ============================================================
-// DynamicThreadPool load
+// DynamicThreadPool load with
+// BoundedBlockingQueue and MichaelScottQueue
 // ============================================================
 
-TEST(LoadTest, ThreadPoolHighThroughputFromManyProducers)
+template <template <typename> class T> struct TemplateWrapper {
+    template <typename U> using type = T<U>;
+};
+
+template <typename T> class DynamicThreadPoolLoadTest : public testing::Test
 {
-    DynamicThreadPool pool(4, 16, 100ms, 1024);
+};
+
+using QueueTypes =
+    testing::Types<TemplateWrapper<BoundedBlockingQueue>, TemplateWrapper<MichaelScottQueue>>;
+
+TYPED_TEST_SUITE(DynamicThreadPoolLoadTest, QueueTypes);
+
+TYPED_TEST(DynamicThreadPoolLoadTest, ThreadPoolHighThroughputFromManyProducers)
+{
+    DynamicThreadPool<TypeParam::template type> pool(4, 16, 100ms, 1024);
     constexpr int producers = 4;
     constexpr int perProducer = 5000;
     constexpr int total = producers * perProducer;
@@ -372,9 +386,9 @@ TEST(LoadTest, ThreadPoolHighThroughputFromManyProducers)
     EXPECT_TRUE(waitFor([&] { return counter.load() == total; }, 30s));
 }
 
-TEST(LoadTest, ThreadPoolScalesUpUnderBurst)
+TYPED_TEST(DynamicThreadPoolLoadTest, ThreadPoolScalesUpUnderBurst)
 {
-    DynamicThreadPool pool(2, 16, 200ms, 256);
+    DynamicThreadPool<TypeParam::template type> pool(2, 16, 200ms, 256);
     constexpr int count = 64;
     std::atomic<int> active{0};
     std::atomic<int> maxActive{0};
@@ -397,9 +411,9 @@ TEST(LoadTest, ThreadPoolScalesUpUnderBurst)
     EXPECT_GT(maxActive.load(), 2);
 }
 
-TEST(LoadTest, ThreadPoolNoTaskLossWithMixedExceptions)
+TYPED_TEST(DynamicThreadPoolLoadTest, ThreadPoolNoTaskLossWithMixedExceptions)
 {
-    DynamicThreadPool pool(4, 8, 100ms, 256);
+    DynamicThreadPool<TypeParam::template type> pool(4, 8, 100ms, 256);
     constexpr int count = 5000;
     std::atomic<int> ok{0};
     std::atomic<int> failed{0};
@@ -570,7 +584,7 @@ TEST(LoadTest, SchedulerManyIntervalsTick)
     std::this_thread::sleep_for(200ms);
     const auto after = totalTicks.load();
 
-    // All intervals were canceled 
+    // All intervals were canceled
     EXPECT_LE(before, after);
 }
 

@@ -31,7 +31,7 @@ struct TaskScheduler::Impl {
     {
     }
 
-    DynamicThreadPool pool;
+    DynamicThreadPool<> pool;
     EventLoop loop;
     std::jthread loopThread;
     std::unique_ptr<IntervalHandle> timerCleaner;

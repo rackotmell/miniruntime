@@ -1,22 +1,41 @@
 #pragma once
 
 #include <chrono>
+#include <concepts>
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <thread>
+
+#include "boundedblockingqueue.h"
 
 namespace miniruntime
 {
 
+// Queue type concept
+template <template <typename> class Q, typename T>
+concept Queue = requires(Q<T> queue, T value) {
+    { queue.push(value) } -> std::same_as<bool>;
+    { queue.pop() } -> std::same_as<std::optional<T>>;
+    { queue.timeoutPop(std::chrono::seconds(1)) } -> std::same_as<std::optional<T>>;
+    { queue.close() } -> std::same_as<void>;
+    { queue.size() } -> std::same_as<size_t>;
+};
+
 /**
  * @brief Thread pool with automatic size adjustment.
  *
- * DynamicThreadPool runs tasks from a bounded blocking queue on a set of
+ * DynamicThreadPool runs tasks from a configurable queue on a set of
  * worker threads. The pool starts with minPoolSize workers, grows while
  * the queue is overloaded (up to maxPoolSize), and shrinks when a worker
  * sits idle for idleTimeout.
+ *
+ * @tparam QueueType A queue template (BoundedBlockingQueue or MichaelScottQueue).
+ *   The task type (std::function<void()>) is fixed internally.
  */
+template <template <typename> class QueueType = BoundedBlockingQueue>
+    requires Queue<QueueType, std::function<void()>>
 class DynamicThreadPool
 {
 public:
@@ -27,7 +46,8 @@ public:
      * @param minPoolSize Number of workers kept alive regardless of load.
      * @param maxPoolSize Upper bound for automatic scaling up.
      * @param idleTimeout How long a worker idles before retiring itself.
-     * @param taskQueueSize Capacity of the internal task queue.
+     * @param taskQueueSize Capacity of the internal task queue;
+     * ignored if used unbounded MichaelScottQueue.
      */
     explicit DynamicThreadPool(size_t minPoolSize = std::thread::hardware_concurrency(),
                                size_t maxPoolSize = std::thread::hardware_concurrency() * 2,

@@ -7,15 +7,17 @@
 #include <utility>
 #include <vector>
 
-#include "boundedblockingqueue.h"
 #include "logger.h"
+#include "michaelscottqueue.h"
 
 namespace miniruntime
 {
 
-struct DynamicThreadPool::Impl {
+template <template <typename> class QueueType>
+    requires Queue<QueueType, std::function<void()>>
+struct DynamicThreadPool<QueueType>::Impl {
     std::vector<std::jthread> threads;
-    BoundedBlockingQueue<Task> taskQueue;
+    QueueType<Task> taskQueue;
     std::jthread zombie;
     std::timed_mutex mutex;
 
@@ -28,9 +30,19 @@ struct DynamicThreadPool::Impl {
          size_t maxPoolSize,
          std::chrono::milliseconds idleTimeout,
          size_t taskQueueSize)
-        : taskQueue(taskQueueSize), idleTimeout(idleTimeout), minPoolSize(minPoolSize),
+        : taskQueue(createQueue(taskQueueSize)), idleTimeout(idleTimeout), minPoolSize(minPoolSize),
           maxPoolSize(maxPoolSize)
     {
+    }
+
+    // Factory method for creation queue from the template parameter
+    static QueueType<Task> createQueue(size_t taskQueueSize)
+    {
+        if constexpr (std::is_constructible_v<QueueType<Task>, size_t>) {
+            return QueueType<Task>(taskQueueSize);
+        } else {
+            return QueueType<Task>();
+        }
     }
 
     // Main worker loop: take tasks until stopped or idle for too long.
@@ -106,10 +118,12 @@ struct DynamicThreadPool::Impl {
     }
 };
 
-DynamicThreadPool::DynamicThreadPool(size_t minPoolSize,
-                                     size_t maxPoolSize,
-                                     std::chrono::milliseconds idleTimeout,
-                                     size_t taskQueueSize)
+template <template <typename> class QueueType>
+    requires Queue<QueueType, std::function<void()>>
+DynamicThreadPool<QueueType>::DynamicThreadPool(size_t minPoolSize,
+                                                size_t maxPoolSize,
+                                                std::chrono::milliseconds idleTimeout,
+                                                size_t taskQueueSize)
     : m_impl(std::make_unique<Impl>(minPoolSize, maxPoolSize, idleTimeout, taskQueueSize))
 {
     LOG_DEBUG("DynamicThreadPool created: min={}, max={}, idleTimeout={}ms, queueSize={}",
@@ -122,7 +136,9 @@ DynamicThreadPool::DynamicThreadPool(size_t minPoolSize,
     m_impl->createNThreads(minPoolSize);
 }
 
-DynamicThreadPool::~DynamicThreadPool()
+template <template <typename> class QueueType>
+    requires Queue<QueueType, std::function<void()>>
+DynamicThreadPool<QueueType>::~DynamicThreadPool()
 {
     {
         std::lock_guard lock(m_impl->mutex);
@@ -142,10 +158,16 @@ DynamicThreadPool::~DynamicThreadPool()
     LOG_DEBUG("DynamicThreadPool destroyed");
 }
 
-void DynamicThreadPool::enqueue(Task task)
+template <template <typename> class QueueType>
+    requires Queue<QueueType, std::function<void()>>
+void DynamicThreadPool<QueueType>::enqueue(Task task)
 {
     // Scale up if overloaded, then hand the task to the queue.
     m_impl->adjustSize();
     m_impl->taskQueue.push(std::move(task));
 }
+
+template class DynamicThreadPool<BoundedBlockingQueue>;
+template class DynamicThreadPool<MichaelScottQueue>;
+
 } // namespace miniruntime

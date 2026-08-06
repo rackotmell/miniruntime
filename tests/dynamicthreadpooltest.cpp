@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "dynamicthreadpool.h"
+#include "michaelscottqueue.h"
 
 using namespace miniruntime;
 using namespace std::chrono_literals;
@@ -25,9 +26,27 @@ bool waitFor(std::function<bool()> predicate, std::chrono::milliseconds timeout)
 
 } // namespace
 
-TEST(DynamicThreadPoolTest, ExecutesTask)
+// ============================================================
+// DynamicThreadPool with different queues 
+// (BoundedBlockingQueue and MichaelScottQueue)
+// ============================================================
+
+template <template <typename> class T> struct TemplateWrapper {
+    template <typename U> using type = T<U>;
+};
+
+template <typename T> class DynamicThreadPoolTest : public testing::Test
 {
-    DynamicThreadPool pool(1, 1, 1s, 8);
+};
+
+using QueueTypes =
+    testing::Types<TemplateWrapper<BoundedBlockingQueue>, TemplateWrapper<MichaelScottQueue>>;
+
+TYPED_TEST_SUITE(DynamicThreadPoolTest, QueueTypes);
+
+TYPED_TEST(DynamicThreadPoolTest, ExecutesTask)
+{
+    DynamicThreadPool<TypeParam::template type> pool(1, 1, 1s, 8);
     std::atomic<bool> ran{false};
 
     pool.enqueue([&ran] { ran.store(true); });
@@ -35,9 +54,9 @@ TEST(DynamicThreadPoolTest, ExecutesTask)
     EXPECT_TRUE(waitFor([&ran] { return ran.load(); }, 1s));
 }
 
-TEST(DynamicThreadPoolTest, ExecutesManyTasks)
+TYPED_TEST(DynamicThreadPoolTest, ExecutesManyTasks)
 {
-    DynamicThreadPool pool(2, 2, 1s, 64);
+    DynamicThreadPool<TypeParam::template type> pool(2, 2, 1s, 64);
     constexpr int count = 200;
     std::atomic<int> counter{0};
 
@@ -48,9 +67,9 @@ TEST(DynamicThreadPoolTest, ExecutesManyTasks)
     EXPECT_TRUE(waitFor([&counter] { return counter.load() == count; }, 5s));
 }
 
-TEST(DynamicThreadPoolTest, RunsTasksConcurrently)
+TYPED_TEST(DynamicThreadPoolTest, RunsTasksConcurrently)
 {
-    DynamicThreadPool pool(2, 2, 1s, 8);
+    DynamicThreadPool<TypeParam::template type> pool(2, 2, 1s, 8);
     std::atomic<bool> firstEntered{false};
     std::atomic<bool> secondEntered{false};
 
@@ -67,9 +86,9 @@ TEST(DynamicThreadPoolTest, RunsTasksConcurrently)
     EXPECT_TRUE(waitFor([&] { return firstEntered.load() && secondEntered.load(); }, 1s));
 }
 
-TEST(DynamicThreadPoolTest, DontFallWithExceptionInOneTask)
+TYPED_TEST(DynamicThreadPoolTest, DontFallWithExceptionInOneTask)
 {
-    DynamicThreadPool pool(1, 1, 1s, 8);
+    DynamicThreadPool<TypeParam::template type> pool(1, 1, 1s, 8);
     std::atomic<bool> ran{false};
 
     pool.enqueue([] { throw std::runtime_error("boom"); });
@@ -78,9 +97,9 @@ TEST(DynamicThreadPoolTest, DontFallWithExceptionInOneTask)
     EXPECT_TRUE(waitFor([&ran] { return ran.load(); }, 1s));
 }
 
-TEST(DynamicThreadPoolTest, EnqueueAfterIdleTimeoutStillRuns)
+TYPED_TEST(DynamicThreadPoolTest, EnqueueAfterIdleTimeoutStillRuns)
 {
-    DynamicThreadPool pool(1, 2, 50ms, 8);
+    DynamicThreadPool<TypeParam::template type> pool(1, 2, 50ms, 8);
     std::atomic<bool> ran{false};
 
     pool.enqueue([&ran] {
