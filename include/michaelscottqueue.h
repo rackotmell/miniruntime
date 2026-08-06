@@ -56,12 +56,15 @@ public:
      * @brief Moves/copies a value to the back of the queue.
      * @param value Element to enqueue (perfectly forwarded).
      * @return false if the queue is already closed, true otherwise.
+     * @throws std::bad_alloc or an exception from T's constructor if the new
+     * node cannot be allocated.
      */
     template <typename U> bool push(U&& value) { return emplace(std::forward<U>(value)); }
 
     /**
      * @brief Removes and returns the front element; blocks (spins) until available.
      * @return The element, or std::nullopt if the queue is closed and drained.
+     * @throws An exception from T's move constructor when extracting the element.
      */
     std::optional<T> pop()
     {
@@ -81,6 +84,7 @@ public:
      * @brief Like pop(), but gives up after the given timeout.
      * @param duration Maximum time to wait for an element.
      * @return The element, or std::nullopt on timeout or queue closure.
+     * @throws An exception from T's move constructor when extracting the element.
      */
     template <typename Rep, typename Period>
     std::optional<T> timeoutPop(std::chrono::duration<Rep, Period> duration)
@@ -104,6 +108,8 @@ public:
      * @brief In-place push; constructs the element at the back of the queue.
      * @param args Constructor arguments for T.
      * @return false if the queue is already closed, true otherwise.
+     * @throws std::bad_alloc or an exception from T's constructor if the new
+     * node cannot be allocated.
      */
     template <typename... Args> bool emplace(Args&&... args)
     {

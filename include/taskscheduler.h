@@ -33,6 +33,7 @@ public:
      * @brief Construct a scheduler with a dynamically resized thread pool.
      * @param minParallelTasks Minimum number of pool threads.
      * @param maxParallelTasks Maximum number of pool threads.
+     * @throws std::system_error if the initial pool threads cannot be spawned.
      */
     TaskScheduler(size_t minParallelTasks = std::thread::hardware_concurrency(),
                   size_t maxParallelTasks = 2 * std::thread::hardware_concurrency());
@@ -45,6 +46,9 @@ public:
     /**
      * @brief Runs a callable immediately on the thread pool.
      * @return Future holding the result (or the exception) once the task completes.
+     * @note If the user-provided callable throws, the exception is captured into
+     * the Future and re-thrown by Future::get().
+     * @throws std::bad_alloc if the task cannot be wrapped or enqueued.
      */
     template <typename F, typename... Args>
     auto execute(F&& f, Args&&... args) -> Future<std::invoke_result_t<F, Args...>>
@@ -172,6 +176,8 @@ public:
 
     /**
      * @brief Starts the event loop on a dedicated thread. Idempotent.
+     * @throws std::runtime_error if the internal timer for task cleanup
+     * cannot be registered on the event loop.
      */
     void init();
 

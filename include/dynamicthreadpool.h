@@ -48,6 +48,7 @@ public:
      * @param idleTimeout How long a worker idles before retiring itself.
      * @param taskQueueSize Capacity of the internal task queue;
      * ignored if used unbounded MichaelScottQueue.
+     * @throws std::system_error if the initial pool threads cannot be spawned.
      */
     explicit DynamicThreadPool(size_t minPoolSize = std::thread::hardware_concurrency(),
                                size_t maxPoolSize = std::thread::hardware_concurrency() * 2,
@@ -58,6 +59,7 @@ public:
     /**
      * @brief Enqueue a task for execution; may block if the queue is full.
      * @param task Callable to run on one of the pool threads.
+     * @throws std::bad_alloc if the task cannot be moved into the queue.
      */
     void enqueue(Task task);
 

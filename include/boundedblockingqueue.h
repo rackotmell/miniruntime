@@ -32,6 +32,8 @@ public:
      * @brief Inserts a value at the back; blocks if the queue is full.
      * @param value Element to enqueue.
      * @return true on success, false if the queue was closed while waiting.
+     * @throws std::bad_alloc or an exception from T's constructor if storage
+     * cannot be allocated.
      */
     template<typename U>
     bool push(U&& value)
@@ -42,6 +44,7 @@ public:
     /**
      * @brief Removes and returns the front element; blocks if the queue is empty.
      * @return The element, or std::nullopt if the queue is closed and drained.
+     * @throws An exception from T's move constructor when extracting the element.
      */
     std::optional<T> pop()
     {
@@ -63,6 +66,7 @@ public:
      * @brief Like pop(), but returns std::nullopt after the given timeout.
      * @param duration Maximum time to wait for an element.
      * @return The element, or std::nullopt on timeout or queue closure.
+     * @throws An exception from T's move constructor when extracting the element.
      */
     template <typename Rep, typename Period>
     std::optional<T> timeoutPop(std::chrono::duration<Rep, Period> duration)
@@ -87,6 +91,8 @@ public:
      * @brief In-place push; blocks if the queue is full.
      * @param args Constructor arguments for T forwarded to emplace_back().
      * @return true on success, false if the queue was closed while waiting.
+     * @throws std::bad_alloc or an exception from T's constructor if storage
+     * cannot be allocated.
      */
     template <typename... Args> bool emplace(Args&&... args)
     {

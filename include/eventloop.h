@@ -32,6 +32,10 @@ public:
     using TriggerCallback = std::function<void()>;
     using TimerCallback = std::function<void()>;
 
+    /**
+     * @brief Creates the event loop and the underlying epoll descriptor.
+     * @throws std::runtime_error if the epoll descriptor cannot be created.
+     */
     EventLoop();
     ~EventLoop();
 
@@ -49,6 +53,7 @@ public:
      * @param type How the descriptor should be interpreted.
      * @param callback Called from run() when the fd becomes ready.
      * @return Handle owning the registration.
+     * @throws std::runtime_error if the fd cannot be registered with epoll.
      */
     [[nodiscard]] EventHandle
     createEvent(int fd, uint32_t epollFlags, EventType type, EventCallback callback);
@@ -57,6 +62,7 @@ public:
      * @brief Creates a manual signal using eventfd.
      * @param callback Called from run() after the trigger fires.
      * @return Handle; trigger() wakes up the event loop.
+     * @throws std::runtime_error if the eventfd cannot be created or registered.
      */
     [[nodiscard]] TriggerHandle createTrigger(TriggerCallback callback);
 
@@ -65,6 +71,7 @@ public:
      * @param timeout  Delay before the callback fires.
      * @param callback Called from run() once the timer expires.
      * @return Handle; fired() reports whether the timer has expired.
+     * @throws std::runtime_error if the timerfd cannot be created or registered.
      */
     [[nodiscard]] TimerHandle createTimer(std::chrono::milliseconds timeout,
                                           TimerCallback callback);
@@ -74,12 +81,14 @@ public:
      * @param interval Period between consecutive firings.
      * @param callback Called from run() on every tick.
      * @return Handle; resetInterval() can change the period later.
+     * @throws std::runtime_error if the timerfd cannot be created or registered.
      */
     [[nodiscard]] IntervalHandle createInterval(std::chrono::milliseconds interval,
                                                 TimerCallback callback);
 
     /**
      * @brief Blocks the calling thread to dispatch callbacks until stop().
+     * @throws std::runtime_error if epoll_wait fails (other than EINTR).
      */
     void run();
 

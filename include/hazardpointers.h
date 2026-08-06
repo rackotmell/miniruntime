@@ -86,6 +86,7 @@ public:
 
     /**
      * @brief Reclaims as many retired nodes as possible (see retire()).
+     * @throws std::bad_alloc if the survivor list cannot be allocated.
      */
     void scan()
     {
@@ -123,6 +124,7 @@ public:
     /**
      * @brief Returns a reusable node from the internal pool, if any.
      * @return A pooled pointer, or nullptr if the pool is empty.
+     * @throws std::bad_alloc if the pool lock or internal storage cannot be allocated.
      */
     T* allocate()
     {
@@ -138,6 +140,7 @@ public:
 
     /**
      * @brief Returns a node to the internal pool (the pool owns deallocation).
+     * @throws std::bad_alloc if the pool storage cannot be allocated.
      */
     void deallocate(T* ptr)
     {
