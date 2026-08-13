@@ -14,18 +14,18 @@ This project was designed to explore and gain a deeper understanding of the inne
 
 ## Components
 
-| Component | Header | Description |
-|-----------|--------|-------------|
-| **BoundedBlockingQueue** | `boundedblockingqueue.h` | Thread-safe bounded blocking queue (mutex + 2 condition variables). Blocks on push when full, blocks on pop when empty. Supports timeout operations. |
-| **MichaelScottQueue** | `michaelscottqueue.h` | Unbounded lock-free FIFO queue (Michael & Scott, 1996). Uses hazard pointers for safe memory reclamation. |
-| **HazardPointers** | `hazardpointers.h` | Thread-safe garbage collector for lock-free structures. Protects pointers before dereferencing, ensures safe deallocation. |
-| **DynamicThreadPool** | `dynamicthreadpool.h` | Thread pool with automatic size adjustment (min/max), idle-timeout thread retirement, and configurable task queue. |
-| **EventLoop** | `eventloop.h` | Linux epoll-driven event reactor. Supports raw fd events, eventfd triggers, one-shot and interval timerfd timers. |
-| **Handle** | `handle.h` | RAII owners of event-loop registrations. Move-only handles that automatically unregister fds on destruction. |
-| **TaskScheduler** | `taskscheduler.h` | High-level facade: connects EventLoop to ThreadPool. API: `execute` (immediate), `schedule` (delayed), `scheduleInterval` (recurring). |
-| **Future / Promise** | `future.h` | Custom implementation without mutexes, using `std::atomic` + `wait/notify_all`. Supports result, exception, and void specializations. |
-| **SharedValue** | `sharedvalue.h` | Reusable value holder for repeating tasks (intervals). Thread-safe, overwrites previous value on each `set()`. |
-| **Logger** | `logger.h` | Asynchronous singleton logger on a separate thread. Uses `std::format` + `std::source_location`. Provides `LOG_DEBUG/INFO/WARNING/ERROR` macros. |
+| Component | Header | Namespace | Description |
+|-----------|--------|-----------|-------------|
+| **BoundedBlockingQueue** | `miniruntime/task/boundedblockingqueue.h` | `miniruntime::task` | Thread-safe bounded blocking queue (mutex + 2 condition variables). Blocks on push when full, blocks on pop when empty. Supports timeout operations. |
+| **MichaelScottQueue** | `miniruntime/task/michaelscottqueue.h` | `miniruntime::task` | Unbounded lock-free FIFO queue (Michael & Scott, 1996). Uses hazard pointers for safe memory reclamation. |
+| **HazardPointers** | `miniruntime/task/hazardpointers.h` | `miniruntime::task` | Thread-safe garbage collector for lock-free structures. Protects pointers before dereferencing, ensures safe deallocation. |
+| **DynamicThreadPool** | `miniruntime/task/dynamicthreadpool.h` | `miniruntime::task` | Thread pool with automatic size adjustment (min/max), idle-timeout thread retirement, and configurable task queue. |
+| **EventLoop** | `miniruntime/event/eventloop.h` | `miniruntime::event` | Linux epoll-driven event reactor. Supports raw fd events, eventfd triggers, one-shot and interval timerfd timers. |
+| **Handle** | `miniruntime/event/handle.h` | `miniruntime::event` | RAII owners of event-loop registrations. Move-only handles that automatically unregister fds on destruction. |
+| **TaskScheduler** | `miniruntime/scheduler/taskscheduler.h` | `miniruntime::scheduler` | High-level facade: connects EventLoop to ThreadPool. API: `execute` (immediate), `schedule` (delayed), `scheduleInterval` (recurring). |
+| **Future / Promise** | `miniruntime/asyncresult/future.h` | `miniruntime::asyncresult` | Custom implementation without mutexes, using `std::atomic` + `wait/notify_all`. Supports result, exception, and void specializations. |
+| **SharedValue** | `miniruntime/asyncresult/sharedvalue.h` | `miniruntime::asyncresult` | Reusable value holder for repeating tasks (intervals). Thread-safe, overwrites previous value on each `set()`. |
+| **Logger** | `miniruntime/logger/logger.h` | `miniruntime::logger` | Asynchronous singleton logger on a separate thread. Uses `std::format` + `std::source_location`. Provides `LOG_DEBUG/INFO/WARNING/ERROR` macros. |
 
 ## Technologies
 
@@ -37,18 +37,33 @@ This project was designed to explore and gain a deeper understanding of the inne
 
 ```
 miniruntime/
-├── include/           # Public header files (interfaces)
-│   └── detail/        # Internal header files implementation 
-├── src/               # Library implementation
-├── examples/          # Usage examples
-└── tests/             # GoogleTest-based unit tests
+├── include/miniruntime/
+│   ├── miniruntime.h              # Umbrella header (includes all components)
+│   ├── event/                     # EventLoop, Handle
+│   ├── asyncresult/               # Future, Promise, SharedValue
+│   ├── task/                      # DynamicThreadPool, queues, HazardPointers
+│   ├── scheduler/                 # TaskScheduler
+│   └── logger/                    # Logger
+├── src/
+│   ├── event/
+│   ├── asyncresult/
+│   ├── task/
+│   ├── scheduler/
+│   └── logger/
+├── examples/                      # Usage examples
+└── tests/
+    ├── event/
+    ├── asyncresult/
+    ├── task/
+    ├── scheduler/
+    └── logger/
 ```
 
 ## Documentation
 
 API documentation is provided as **Doxygen-style comments** directly in the header files. Each public class, method, and important parameter is documented with `@brief`, `@param`, `@return`, and `@throws` tags.
 
-Browse the headers in `include/` for full API reference.
+Browse the headers in `include/miniruntime/` for full API reference. You can also use the umbrella header `#include <miniruntime/miniruntime.h>` to include all components at once.
 
 ## Building
 

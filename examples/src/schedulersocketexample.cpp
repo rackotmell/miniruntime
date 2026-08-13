@@ -1,7 +1,7 @@
-#include "eventloop.h"
-#include "handle.h"
-#include "logger.h"
-#include "taskscheduler.h"
+#include "miniruntime/event/eventloop.h"
+#include "miniruntime/event/handle.h"
+#include "miniruntime/logger/logger.h"
+#include "miniruntime/scheduler/taskscheduler.h"
 
 #include <algorithm>
 #include <array>
@@ -23,7 +23,9 @@ static std::string processLine(const std::string& line)
 int main()
 {
     using namespace std::chrono_literals;
-    using namespace miniruntime;
+    using namespace miniruntime::event;
+    using namespace miniruntime::logger;
+    using namespace miniruntime::scheduler;
 
     Logger::getInstance().setMinLevel(LogLevel::Info);
 

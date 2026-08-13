@@ -4,10 +4,10 @@
 #include <string>
 #include <type_traits>
 
-#include "boundedblockingqueue.h"
-#include "future.h"
-#include "michaelscottqueue.h"
-#include "sharedvalue.h"
+#include "miniruntime/task/boundedblockingqueue.h"
+#include "miniruntime/asyncresult/future.h"
+#include "miniruntime/task/michaelscottqueue.h"
+#include "miniruntime/asyncresult/sharedvalue.h"
 
 //================================================
 // Auxiliary types
@@ -72,7 +72,8 @@ template <typename T> T makeValue()
 // Queue type tests
 // ================================================
 
-using namespace miniruntime;
+using namespace miniruntime::asyncresult;
+using namespace miniruntime::task;
 
 template <typename T> class QueueTypeTest : public testing::Test
 {

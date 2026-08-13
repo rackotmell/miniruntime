@@ -1,11 +1,12 @@
-#include "logger.h"
-#include "taskscheduler.h"
+#include "miniruntime/logger/logger.h"
+#include "miniruntime/scheduler/taskscheduler.h"
 
 #include <thread>
 
 int main()
 {
-    using namespace miniruntime;
+    using namespace miniruntime::logger;
+    using namespace miniruntime::scheduler;
     using namespace std::chrono_literals;
 
     Logger::getInstance().setMinLevel(LogLevel::Info);

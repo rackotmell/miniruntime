@@ -14,18 +14,18 @@ MiniRuntime — мини-фреймворк для асинхронного вы
 
 ## Компоненты
 
-| Компонент | Заголовок | Описание |
-|-----------|-----------|----------|
-| **BoundedBlockingQueue** | `boundedblockingqueue.h` | Потокобезопасная ограниченная блокирующая очередь (мьютекс + 2 condition_variable). Блокирует при push когда очередь полна, блокирует при pop когда пуста. Поддерживает операции с таймаутом. |
-| **MichaelScottQueue** | `michaelscottqueue.h` | Неограниченная блокирующая FIFO-очередь (Michael & Scott, 1996). Использует hazard pointers для безопасного освобождения памяти. |
-| **HazardPointers** | `hazardpointers.h` | Потокобезопасный сборщик мусора для структур без блокировок. Защищает указатели перед разыменованием, обеспечивает безопасное освобождение. |
-| **DynamicThreadPool** | `dynamicthreadpool.h` | Пул потоков с автоматической настройкой размера (min/max), таймаутом простоя для завершения потоков и настраиваемой очередью задач. |
-| **EventLoop** | `eventloop.h` | Реактор на основе Linux epoll. Поддерживает события raw fd, триггеры eventfd, одноразовые и интервальные таймеры timerfd. |
-| **Handle** | `handle.h` | RAII-владельцы регистраций event-loop. Move-only дескрипторы, автоматически отменяющие регистрацию fd при уничтожении. |
-| **TaskScheduler** | `taskscheduler.h` | Высокоуровневый фасад: связывает EventLoop с ThreadPool. API: `execute` (немедленно), `schedule` (с задержкой), `scheduleInterval` (периодически). |
-| **Future / Promise** | `future.h` | Кастомная реализация без мьютексов, использует `std::atomic` + `wait/notify_all`. Поддерживает result, exception и void-специализации. |
-| **SharedValue** | `sharedvalue.h` | Многоразовый контейнер значений для повторяющихся задач (интервалы). Потокобезопасный, перезаписывает предыдущее значение при каждом `set()`. |
-| **Logger** | `logger.h` | Асинхронный логгер-синглтон на отдельном потоке. Использует `std::format` + `std::source_location`. Предоставляет макросы `LOG_DEBUG/INFO/WARNING/ERROR`. |
+| Компонент | Заголовок | Пространство имён | Описание |
+|-----------|-----------|-------------------|----------|
+| **BoundedBlockingQueue** | `miniruntime/task/boundedblockingqueue.h` | `miniruntime::task` | Потокобезопасная ограниченная блокирующая очередь (мьютекс + 2 condition_variable). Блокирует при push когда очередь полна, блокирует при pop когда пуста. Поддерживает операции с таймаутом. |
+| **MichaelScottQueue** | `miniruntime/task/michaelscottqueue.h` | `miniruntime::task` | Неограниченная блокирующая FIFO-очередь (Michael & Scott, 1996). Использует hazard pointers для безопасного освобождения памяти. |
+| **HazardPointers** | `miniruntime/task/hazardpointers.h` | `miniruntime::task` | Потокобезопасный сборщик мусора для структур без блокировок. Защищает указатели перед разыменованием, обеспечивает безопасное освобождение. |
+| **DynamicThreadPool** | `miniruntime/task/dynamicthreadpool.h` | `miniruntime::task` | Пул потоков с автоматической настройкой размера (min/max), таймаутом простоя для завершения потоков и настраиваемой очередью задач. |
+| **EventLoop** | `miniruntime/event/eventloop.h` | `miniruntime::event` | Реактор на основе Linux epoll. Поддерживает события raw fd, триггеры eventfd, одноразовые и интервальные таймеры timerfd. |
+| **Handle** | `miniruntime/event/handle.h` | `miniruntime::event` | RAII-владельцы регистраций event-loop. Move-only дескрипторы, автоматически отменяющие регистрацию fd при уничтожении. |
+| **TaskScheduler** | `miniruntime/scheduler/taskscheduler.h` | `miniruntime::scheduler` | Высокоуровневый фасад: связывает EventLoop с ThreadPool. API: `execute` (немедленно), `schedule` (с задержкой), `scheduleInterval` (периодически). |
+| **Future / Promise** | `miniruntime/asyncresult/future.h` | `miniruntime::asyncresult` | Кастомная реализация без мьютексов, использует `std::atomic` + `wait/notify_all`. Поддерживает result, exception и void-специализации. |
+| **SharedValue** | `miniruntime/asyncresult/sharedvalue.h` | `miniruntime::asyncresult` | Многоразовый контейнер значений для повторяющихся задач (интервалы). Потокобезопасный, перезаписывает предыдущее значение при каждом `set()`. |
+| **Logger** | `miniruntime/logger/logger.h` | `miniruntime::logger` | Асинхронный логгер-синглтон на отдельном потоке. Использует `std::format` + `std::source_location`. Предоставляет макросы `LOG_DEBUG/INFO/WARNING/ERROR`. |
 
 ## Технологии
 
@@ -37,18 +37,33 @@ MiniRuntime — мини-фреймворк для асинхронного вы
 
 ```
 miniruntime/
-├── include/           # Публичные заголовочные файлы (публичный интерфейс)
-│   └── detail/        # Внутренняя реализация части заголовочных файлов
-├── src/               # Реализация библиотеки
-├── examples/          # Примеры использования
-└── tests/             # Юнит-тесты с использованием GoogleTest
+├── include/miniruntime/
+│   ├── miniruntime.h              # Umbrella header (включает все компоненты)
+│   ├── event/                     # EventLoop, Handle
+│   ├── asyncresult/               # Future, Promise, SharedValue
+│   ├── task/                      # DynamicThreadPool, очереди, HazardPointers
+│   ├── scheduler/                 # TaskScheduler
+│   └── logger/                    # Logger
+├── src/
+│   ├── event/
+│   ├── asyncresult/
+│   ├── task/
+│   ├── scheduler/
+│   └── logger/
+├── examples/                      # Примеры использования
+└── tests/
+    ├── event/
+    ├── asyncresult/
+    ├── task/
+    ├── scheduler/
+    └── logger/
 ```
 
 ## Документация
 
 Документация API предоставлена в виде **комментариев в стиле Doxygen** непосредственно в заголовочных файлах. Каждый публичный класс, метод и важный параметр документирован тегами `@brief`, `@param`, `@return` и `@throws`.
 
-Просматривайте заголовки в `include/` для полной справки по API.
+Просматривайте заголовки в `include/miniruntime/` для полной справки по API. Также можно использовать зонтичный заголовок `#include <miniruntime/miniruntime.h>` для включения всех компонентов сразу.
 
 ## Сборка
 

@@ -1,6 +1,6 @@
-#include "boundedblockingqueue.h"
-#include "eventloop.h"
-#include "logger.h"
+#include "miniruntime/task/boundedblockingqueue.h"
+#include "miniruntime/event/eventloop.h"
+#include "miniruntime/logger/logger.h"
 
 #include <atomic>
 #include <string>
@@ -12,7 +12,9 @@ using namespace std::chrono_literals;
 // into a BoundedBlockingQueue, an EventLoop interval drains it.
 int main()
 {
-    using namespace miniruntime;
+    using namespace miniruntime::event;
+    using namespace miniruntime::logger;
+    using namespace miniruntime::task;
 
     Logger::getInstance().setMinLevel(LogLevel::Info);
 

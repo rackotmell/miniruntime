@@ -6,14 +6,18 @@
 #include <thread>
 #include <vector>
 
-#include "boundedblockingqueue.h"
-#include "dynamicthreadpool.h"
-#include "eventloop.h"
-#include "future.h"
-#include "michaelscottqueue.h"
-#include "taskscheduler.h"
+#include "miniruntime/task/boundedblockingqueue.h"
+#include "miniruntime/task/dynamicthreadpool.h"
+#include "miniruntime/event/eventloop.h"
+#include "miniruntime/asyncresult/future.h"
+#include "miniruntime/task/michaelscottqueue.h"
+#include "miniruntime/scheduler/taskscheduler.h"
 
-using namespace miniruntime;
+using namespace miniruntime::asyncresult;
+using namespace miniruntime::event;
+using namespace miniruntime::logger;
+using namespace miniruntime::scheduler;
+using namespace miniruntime::task;
 using namespace std::chrono_literals;
 
 namespace

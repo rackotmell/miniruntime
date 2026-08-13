@@ -1,6 +1,6 @@
-#include "dynamicthreadpool.h"
-#include "eventloop.h"
-#include "logger.h"
+#include "miniruntime/task/dynamicthreadpool.h"
+#include "miniruntime/event/eventloop.h"
+#include "miniruntime/logger/logger.h"
 
 #include <atomic>
 #include <chrono>
@@ -9,7 +9,9 @@
 // feeds work into a DynamicThreadPool.
 int main()
 {
-    using namespace miniruntime;
+    using namespace miniruntime::event;
+    using namespace miniruntime::logger;
+    using namespace miniruntime::task;
     using namespace std::chrono_literals;
 
     Logger::getInstance().setMinLevel(LogLevel::Info);

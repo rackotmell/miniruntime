@@ -1,16 +1,16 @@
 set(LIB_NAME miniruntime)
 
 add_library(${LIB_NAME} STATIC 
-    eventloop.cpp
-    handle.cpp
-    dynamicthreadpool.cpp
-    taskscheduler.cpp
-    logger.cpp
+    event/eventloop.cpp
+    event/handle.cpp
+    task/dynamicthreadpool.cpp
+    scheduler/taskscheduler.cpp
+    logger/logger.cpp
 )
 
 target_include_directories(${LIB_NAME} PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include/miniruntime>
+    $<INSTALL_INTERFACE:include>
 )
 
 target_compile_definitions(${LIB_NAME} PRIVATE cxx_std_20)
@@ -26,12 +26,12 @@ install(
     TARGETS ${LIB_NAME} sanitizers_options
     EXPORT miniruntimeTargets 
     ARCHIVE DESTINATION lib/miniruntime
-    INCLUDES DESTINATION include/miniruntime
+    INCLUDES DESTINATION include
 )
 
 install(
-    DIRECTORY ${CMAKE_SOURCE_DIR}/include/
-    DESTINATION include/miniruntime
+    DIRECTORY ${CMAKE_SOURCE_DIR}/include/miniruntime
+    DESTINATION include
 )
 
 install(
